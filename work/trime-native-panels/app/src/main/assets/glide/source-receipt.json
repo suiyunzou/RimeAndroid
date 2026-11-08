@@ -1,0 +1,21 @@
+{
+  "release": "wanxiang-precompiled-50-880ac18dd08e",
+  "source": "https://github.com/amzxyz/rime-wanxiang",
+  "changes": "Tone-stripped Pinyin (ü→v); top-weight 80000 Chinese and 30000 English public entries; no personal vocabulary.",
+  "counts": {
+    "chinese": 80000,
+    "english": 30000
+  },
+  "source_sha256": {
+    "en.dict.yaml": "3a6079df62eb8a8b1272a75b5d1c05263bb96788161f1508a0ab48857af089ec",
+    "jichu.dict.yaml": "9d12617d14416402f81a6649f0734735231c9f2d2e410926d231b9c484efb3ed",
+    "LICENSE-ReRime-Wanxiang.txt": "9e5f1b3c610b9c2da5c313bf81d577a7d1acec686bdb0384edefa6df0f90cd94",
+    "NOTICE-ReRime-Wanxiang.md": "e8aa10b1fc0993482fe14e092913827fbba7c5c1e5f43b4954d6bbeedc6c82d9"
+  },
+  "asset_sha256": {
+    "chinese.tsv": "a2c3261879b56fa9550b79593f26abf2466dc5e33be94464fe27ce367935ace4",
+    "english.tsv": "894e300db3ec1eb450dd01f85f7ead5acaa55e4de476e5776da79a7195c2a0f1",
+    "LICENSE-ReRime-Wanxiang.txt": "9e5f1b3c610b9c2da5c313bf81d577a7d1acec686bdb0384edefa6df0f90cd94",
+    "NOTICE-ReRime-Wanxiang.md": "e8aa10b1fc0993482fe14e092913827fbba7c5c1e5f43b4954d6bbeedc6c82d9"
+  }
+}

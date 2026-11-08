@@ -1,0 +1,19 @@
+The bundled glide lexicons derive from the already deployed ReRime Wanxiang public
+library release wanxiang-precompiled-50-880ac18dd08e, dictionary contributors amzxyz
+and rime-wanxiang contributors, under CC BY 4.0. The assets/glide directory retains
+the upstream license, NOTICE, reproducible extraction recipe and per-file hashes.
+Changes: remove Pinyin tone marks, use v for ü, retain high-weight entries and
+exclude non-letter codes; do not copy any user dictionary or learned data.
+
+The decoder independently implements normalized point geometry, endpoint filtering
+and bounded dynamic time warping. It uses neither ReRime's proprietary swipe model
+nor any recorded human swipe training corpus. It recognizes dictionary-backed
+English words and Chinese Pinyin trajectories; arbitrary sentences and indistinct
+traces are not guaranteed. Candidate confirmation is required before committing.
+
+Algorithm background (not copied implementation):
+https://pokristensson.com/gesturekeyboard.html
+https://www.cs.dartmouth.edu/~xingdong/papers/BackSwipe.pdf
+
+Dictionary upstream:
+https://github.com/amzxyz/rime-wanxiang

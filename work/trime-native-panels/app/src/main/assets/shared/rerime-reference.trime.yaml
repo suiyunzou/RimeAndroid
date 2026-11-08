@@ -1,0 +1,949 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Generated from trime-stock.yaml. Existing themes and user preferences are untouched.
+config_version: '3.1'
+name: 视频参考 · ReRime
+author: Local adaptation from observed video; Trime stock GPL-3.0-or-later
+style:
+  auto_caps: false
+  candidate_font: []
+  candidate_padding: 8
+  candidate_spacing: 0
+  candidate_text_size: 20
+  candidate_text_vertical_bias: 1.0
+  candidate_view_height: 40
+  comment_font: comment.ttf
+  comment_height: 12
+  comment_position: right
+  comment_vertical_bias: 0.0
+  comment_text_size: 10
+  hanb_font: []
+  horizontal_gap: 6
+  keyboard_padding: 3
+  keyboard_padding_left: 0
+  keyboard_padding_right: 0
+  keyboard_padding_bottom: 0
+  keyboard_padding_land: 30
+  keyboard_padding_land_bottom: 0
+  key_font: []
+  key_height: 53
+  key_long_text_size: 18
+  key_text_size: 24
+  key_width: 10.0
+  label_text_size: 22
+  label_font: []
+  latin_font: []
+  keyboard_height: 248
+  keyboard_height_land: 200
+  preview_font: []
+  preview_height: 60
+  preview_offset: -12
+  preview_text_size: 40
+  reset_ascii_mode_on_focus_change: false
+  round_corner: 6
+  shadow_radius: 0.0
+  symbol_font: []
+  symbol_text_size: 9
+  text_font: []
+  vertical_gap: 6
+  enter_label_mode: 0
+  enter_labels:
+    go: 前往
+    done: 完成
+    next: 下个
+    pre: 上个
+    search: 搜索
+    send: 发送
+    default: ↵
+preedit:
+  horizontal_padding: 8
+  foreground:
+    font_size: 14
+fallback_colors:
+  candidate_text_color: text_color
+preset_color_schemes:
+  default:
+    name: 视频参考·浅色
+    author: Local reference adaptation
+    light_scheme: reference_light
+    dark_scheme: reference_dark
+    back_color: '0xffd1d3d9'
+    keyboard_back_color: '0xffd1d3d9'
+    root_background: '0xffd1d3d9'
+    candidate_background: '0xffd1d3d9'
+    text_back_color: '0xffd1d3d9'
+    text_color: '0xff191919'
+    candidate_text_color: '0xff191919'
+    comment_text_color: '0xff62666d'
+    label_color: '0xff62666d'
+    border_color: '0xffd1d3d9'
+    candidate_separator_color: '0xffd1d3d9'
+    hilited_text_color: '0xff191919'
+    hilited_back_color: '0xffd1d3d9'
+    hilited_candidate_back_color: '0xffd1d3d9'
+    hilited_candidate_text_color: '0xff191919'
+    hilited_comment_text_color: '0xff62666d'
+    key_back_color: '0xffffffff'
+    key_text_color: '0xff191919'
+    key_symbol_color: '0xff62666d'
+    key_border_color: '0xffffffff'
+    off_key_back_color: '0xffB4B7C1'
+    off_key_text_color: '0xff191919'
+    off_key_symbol_color: '0xff62666d'
+    on_key_back_color: key_back_color
+    hilited_on_key_back_color: key_back_color
+    hilited_on_key_text_color: '0xff191919'
+    on_key_text_color: '0xff191919'
+    on_key_symbol_color: '0xff62666d'
+    hilited_key_back_color: '0xffe4e6e9'
+    hilited_key_text_color: '0xff191919'
+    hilited_key_symbol_color: '0xff62666d'
+    preview_back_color: '0xffffffff'
+    preview_text_color: '0xff191919'
+    shadow_color: '0x00000000'
+    long_text_back_color: '0xffffffff'
+    liquid_keyboard_background: '0xffd1d3d9'
+  reference_light:
+    name: 视频参考·浅色
+    author: Local reference adaptation
+    light_scheme: reference_light
+    dark_scheme: reference_dark
+    back_color: '0xffd1d3d9'
+    keyboard_back_color: '0xffd1d3d9'
+    root_background: '0xffd1d3d9'
+    candidate_background: '0xffd1d3d9'
+    text_back_color: '0xffd1d3d9'
+    text_color: '0xff191919'
+    candidate_text_color: '0xff191919'
+    comment_text_color: '0xff62666d'
+    label_color: '0xff62666d'
+    border_color: '0xffd1d3d9'
+    candidate_separator_color: '0xffd1d3d9'
+    hilited_text_color: '0xff191919'
+    hilited_back_color: '0xffd1d3d9'
+    hilited_candidate_back_color: '0xffd1d3d9'
+    hilited_candidate_text_color: '0xff191919'
+    hilited_comment_text_color: '0xff62666d'
+    key_back_color: '0xffffffff'
+    key_text_color: '0xff191919'
+    key_symbol_color: '0xff62666d'
+    key_border_color: '0xffffffff'
+    off_key_back_color: '0xffB4B7C1'
+    off_key_text_color: '0xff191919'
+    off_key_symbol_color: '0xff62666d'
+    on_key_back_color: key_back_color
+    hilited_on_key_back_color: key_back_color
+    hilited_on_key_text_color: '0xff191919'
+    on_key_text_color: '0xff191919'
+    on_key_symbol_color: '0xff62666d'
+    hilited_key_back_color: '0xffe4e6e9'
+    hilited_key_text_color: '0xff191919'
+    hilited_key_symbol_color: '0xff62666d'
+    preview_back_color: '0xffffffff'
+    preview_text_color: '0xff191919'
+    shadow_color: '0x00000000'
+    long_text_back_color: '0xffffffff'
+    liquid_keyboard_background: '0xffd1d3d9'
+  reference_dark:
+    name: 视频参考·深色
+    author: Local reference adaptation
+    light_scheme: reference_light
+    dark_scheme: reference_dark
+    back_color: '0xff292929'
+    keyboard_back_color: '0xff292929'
+    root_background: '0xff292929'
+    candidate_background: '0xff292929'
+    text_back_color: '0xff292929'
+    text_color: '0xfff5f5f5'
+    candidate_text_color: '0xfff5f5f5'
+    comment_text_color: '0xffd0d0d0'
+    label_color: '0xffd0d0d0'
+    border_color: '0xff292929'
+    candidate_separator_color: '0xff292929'
+    hilited_text_color: '0xff58a9ff'
+    hilited_back_color: '0xff292929'
+    hilited_candidate_back_color: '0xff292929'
+    hilited_candidate_text_color: '0xff58a9ff'
+    hilited_comment_text_color: '0xffd0d0d0'
+    key_back_color: '0xff626262'
+    key_text_color: '0xfff5f5f5'
+    key_symbol_color: '0xffd0d0d0'
+    key_border_color: '0xff626262'
+    off_key_back_color: '0xff454545'
+    off_key_text_color: '0xfff5f5f5'
+    off_key_symbol_color: '0xffd0d0d0'
+    on_key_back_color: '0xff3a8ee6'
+    on_key_text_color: '0xffffffff'
+    on_key_symbol_color: '0xffffffff'
+    hilited_key_back_color: '0xff858585'
+    hilited_key_text_color: '0xfff5f5f5'
+    hilited_key_symbol_color: '0xffd0d0d0'
+    preview_back_color: '0xff626262'
+    preview_text_color: '0xfff5f5f5'
+    shadow_color: '0x00000000'
+    long_text_back_color: '0xff626262'
+    liquid_keyboard_background: '0xff292929'
+preset_keys:
+  BackSpace:
+    label: ⌫
+    repeatable: true
+    send: BackSpace
+  Return:
+    label: enter_labels
+    send: Return
+  space:
+    repeatable: false
+    functional: false
+    send: space
+    label: 空格
+  Shift_L:
+    label: ⇧
+    send: Shift_L
+    shift_lock: ascii_long
+  IME_switch:
+    label: ic@web
+    send: LANGUAGE_SWITCH
+  VOICE_ASSIST:
+    label: ic@microphone-outline
+    send: VOICE_ASSIST
+  Hide:
+    label: 隱藏
+    send: BACK
+  Keyboard_default:
+    label: ABC
+    send: Eisu_toggle
+    select: .default
+  liquid_keyboard_exit:
+    label: ABC
+    send: FUNCTION
+    command: liquid_keyboard
+    option: '-1'
+  Mode_switch:
+    toggle: ascii_mode
+    send: SWITCH_CHARSET
+    states:
+    - 中
+    - EN
+  Left:
+    label: ←
+    send: Left
+  Right:
+    label: →
+    send: Right
+  Up:
+    label: ↑
+    send: Up
+  Down:
+    label: ↓
+    send: Down
+  Escape:
+    label: Esc
+    send: Escape
+  ReferenceNumbers:
+    label: '123'
+    send: Eisu_toggle
+    select: number
+  ReferenceNoOp:
+    label: ' '
+    send: FUNCTION
+    command: smart_input
+    option: __noop__
+  Reference_settings:
+    label: 设置
+    send: FUNCTION
+    command: smart_input
+    option: settings
+  Reference_symbols:
+    label: '#+='
+    send: FUNCTION
+    command: smart_input
+    option: symbols
+  Reference_emoji_variants:
+    label: ☻
+    send: FUNCTION
+    command: smart_input
+    option: emoji_variants
+  Reference_calculator:
+    label: 计算
+    send: FUNCTION
+    command: smart_input
+    option: calculator
+  Reference_clipboard:
+    label: 剪贴板
+    send: FUNCTION
+    command: smart_input
+    option: clipboard
+  Reference_t9:
+    label: 九宫格
+    send: FUNCTION
+    command: smart_input
+    option: t9
+  ReferenceEmoji:
+    label: ☻
+    send: FUNCTION
+    command: liquid_keyboard
+    option: emoji
+preset_keyboards:
+  default:
+    name: 视频参考26键
+    ascii_mode: 0
+    ascii_keyboard: default
+    lock: true
+    width: 10
+    height: 53
+    keyboard_height: 248
+    keyboard_height_land: 200
+    columns: 30
+    horizontal_gap: 6
+    vertical_gap: 6
+    round_corner: 6
+    label_transform: none
+    keys:
+    - click: q
+      label_symbol: '1'
+      swipe_down:
+        label: '1'
+        commit: '1'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: w
+      label_symbol: '2'
+      swipe_down:
+        label: '2'
+        commit: '2'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: e
+      label_symbol: '3'
+      swipe_down:
+        label: '3'
+        commit: '3'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: r
+      label_symbol: '4'
+      swipe_down:
+        label: '4'
+        commit: '4'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: t
+      label_symbol: '5'
+      swipe_down:
+        label: '5'
+        commit: '5'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: y
+      label_symbol: '6'
+      swipe_down:
+        label: '6'
+        commit: '6'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: u
+      label_symbol: '7'
+      swipe_down:
+        label: '7'
+        commit: '7'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: i
+      label_symbol: '8'
+      swipe_down:
+        label: '8'
+        commit: '8'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: o
+      label_symbol: '9'
+      swipe_down:
+        label: '9'
+        commit: '9'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: p
+      label_symbol: '0'
+      swipe_down:
+        label: '0'
+        commit: '0'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - width: 5
+    - click: a
+      label_symbol: /
+      swipe_down:
+        label: /
+        commit: /
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: s
+      label_symbol: ':'
+      swipe_down:
+        label: ':'
+        commit: ':'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: d
+      label_symbol: ;
+      swipe_down:
+        label: ;
+        commit: ;
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: f
+      label_symbol: (
+      swipe_down:
+        label: (
+        commit: (
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: g
+      label_symbol: )
+      swipe_down:
+        label: )
+        commit: )
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: h
+      label_symbol: $
+      swipe_down:
+        label: $
+        commit: $
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: j
+      label_symbol: '@'
+      swipe_down:
+        label: '@'
+        commit: '@'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: k
+      label_symbol: '&'
+      swipe_down:
+        label: '&'
+        commit: '&'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: l
+      label_symbol: '"'
+      swipe_down:
+        label: '"'
+        commit: '"'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - width: 5
+    - click: Shift_L
+      width: 15
+      key_back_color: off_key_back_color
+      label_symbol: EN
+      swipe_down: Mode_switch
+      key_symbol_offset_x: 12
+      send_bindings: false
+    - click: z
+      label_symbol: '-'
+      swipe_down:
+        label: '-'
+        commit: '-'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: x
+      label_symbol: ''''
+      swipe_down:
+        label: ''''
+        commit: ''''
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: c
+      label_symbol: ，
+      swipe_down:
+        label: ，
+        commit: ，
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: v
+      label_symbol: '?'
+      swipe_down:
+        label: '?'
+        commit: '?'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: b
+      label_symbol: '!'
+      swipe_down:
+        label: '!'
+        commit: '!'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: n
+      label_symbol: 。
+      swipe_down:
+        label: 。
+        commit: 。
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: m
+      label_symbol: …
+      swipe_down:
+        label: …
+        commit: …
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: BackSpace
+      width: 15
+      key_back_color: off_key_back_color
+    - click: ReferenceNumbers
+      width: 13
+      key_back_color: off_key_back_color
+    - click: ReferenceEmoji
+      width: 13
+      key_back_color: off_key_back_color
+      long_click: Reference_emoji_variants
+      label_symbol: ' '
+    - click: space
+      key_text_size: 20
+      width: 46
+    - click: Return
+      key_text_size: 24
+      width: 28
+      key_back_color: off_key_back_color
+    - click: IME_switch
+      long_click: IME_switch
+      label_symbol: ' '
+      key_text_size: 20
+      width: 14
+      key_back_color: keyboard_back_color
+      height: 36
+    - width: 72
+    - click: VOICE_ASSIST
+      width: 14
+      key_back_color: keyboard_back_color
+      height: 36
+  qwerty:
+    name: 视频参考26键
+    ascii_mode: 0
+    ascii_keyboard: default
+    lock: true
+    width: 10
+    height: 53
+    keyboard_height: 248
+    keyboard_height_land: 200
+    columns: 30
+    horizontal_gap: 6
+    vertical_gap: 6
+    round_corner: 6
+    label_transform: none
+    keys:
+    - click: q
+      label_symbol: '1'
+      swipe_down:
+        label: '1'
+        commit: '1'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: w
+      label_symbol: '2'
+      swipe_down:
+        label: '2'
+        commit: '2'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: e
+      label_symbol: '3'
+      swipe_down:
+        label: '3'
+        commit: '3'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: r
+      label_symbol: '4'
+      swipe_down:
+        label: '4'
+        commit: '4'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: t
+      label_symbol: '5'
+      swipe_down:
+        label: '5'
+        commit: '5'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: y
+      label_symbol: '6'
+      swipe_down:
+        label: '6'
+        commit: '6'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: u
+      label_symbol: '7'
+      swipe_down:
+        label: '7'
+        commit: '7'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: i
+      label_symbol: '8'
+      swipe_down:
+        label: '8'
+        commit: '8'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: o
+      label_symbol: '9'
+      swipe_down:
+        label: '9'
+        commit: '9'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: p
+      label_symbol: '0'
+      swipe_down:
+        label: '0'
+        commit: '0'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - width: 5
+    - click: a
+      label_symbol: /
+      swipe_down:
+        label: /
+        commit: /
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: s
+      label_symbol: ':'
+      swipe_down:
+        label: ':'
+        commit: ':'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: d
+      label_symbol: ;
+      swipe_down:
+        label: ;
+        commit: ;
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: f
+      label_symbol: (
+      swipe_down:
+        label: (
+        commit: (
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: g
+      label_symbol: )
+      swipe_down:
+        label: )
+        commit: )
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: h
+      label_symbol: $
+      swipe_down:
+        label: $
+        commit: $
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: j
+      label_symbol: '@'
+      swipe_down:
+        label: '@'
+        commit: '@'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: k
+      label_symbol: '&'
+      swipe_down:
+        label: '&'
+        commit: '&'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: l
+      label_symbol: '"'
+      swipe_down:
+        label: '"'
+        commit: '"'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - width: 5
+    - click: Shift_L
+      width: 15
+      key_back_color: off_key_back_color
+      label_symbol: EN
+      swipe_down: Mode_switch
+      key_symbol_offset_x: 12
+      send_bindings: false
+    - click: z
+      label_symbol: '-'
+      swipe_down:
+        label: '-'
+        commit: '-'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: x
+      label_symbol: ''''
+      swipe_down:
+        label: ''''
+        commit: ''''
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: c
+      label_symbol: ，
+      swipe_down:
+        label: ，
+        commit: ，
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: v
+      label_symbol: '?'
+      swipe_down:
+        label: '?'
+        commit: '?'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: b
+      label_symbol: '!'
+      swipe_down:
+        label: '!'
+        commit: '!'
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: n
+      label_symbol: 。
+      swipe_down:
+        label: 。
+        commit: 。
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: m
+      label_symbol: …
+      swipe_down:
+        label: …
+        commit: …
+      key_symbol_offset_x: 9
+      key_symbol_offset_y: 0
+    - click: BackSpace
+      width: 15
+      key_back_color: off_key_back_color
+    - click: ReferenceNumbers
+      width: 13
+      key_back_color: off_key_back_color
+    - click: ReferenceEmoji
+      width: 13
+      key_back_color: off_key_back_color
+      long_click: Reference_emoji_variants
+      label_symbol: ' '
+    - click: space
+      key_text_size: 20
+      width: 46
+    - click: Return
+      key_text_size: 24
+      width: 28
+      key_back_color: off_key_back_color
+    - click: IME_switch
+      long_click: IME_switch
+      label_symbol: ' '
+      key_text_size: 20
+      width: 14
+      key_back_color: keyboard_back_color
+      height: 36
+    - width: 72
+    - click: VOICE_ASSIST
+      width: 14
+      key_back_color: keyboard_back_color
+      height: 36
+  number:
+    name: 数字与标点
+    ascii_mode: 1
+    lock: false
+    width: 10
+    height: 53
+    keyboard_height: 248
+    keyboard_height_land: 200
+    columns: 10
+    horizontal_gap: 6
+    vertical_gap: 6
+    round_corner: 6
+    keys:
+    - click:
+        label: '1'
+        commit: '1'
+      width: 10
+    - click:
+        label: '2'
+        commit: '2'
+      width: 10
+    - click:
+        label: '3'
+        commit: '3'
+      width: 10
+    - click:
+        label: '4'
+        commit: '4'
+      width: 10
+    - click:
+        label: '5'
+        commit: '5'
+      width: 10
+    - click:
+        label: '6'
+        commit: '6'
+      width: 10
+    - click:
+        label: '7'
+        commit: '7'
+      width: 10
+    - click:
+        label: '8'
+        commit: '8'
+      width: 10
+    - click:
+        label: '9'
+        commit: '9'
+      width: 10
+    - click:
+        label: '0'
+        commit: '0'
+      width: 10
+    - click:
+        label: '-'
+        commit: '-'
+      width: 10
+    - click:
+        label: /
+        commit: /
+      width: 10
+    - click:
+        label: ':'
+        commit: ':'
+      width: 10
+    - click:
+        label: ;
+        commit: ;
+      width: 10
+    - click:
+        label: (
+        commit: (
+      width: 10
+    - click:
+        label: )
+        commit: )
+      width: 10
+    - click:
+        label: ￥
+        commit: ￥
+      width: 10
+    - click:
+        label: '&'
+        commit: '&'
+      width: 10
+    - click:
+        label: '@'
+        commit: '@'
+      width: 10
+    - click:
+        label: '"'
+        commit: '"'
+      width: 10
+    - click:
+        label: .
+        commit: .
+      width: 10
+    - click:
+        label: ','
+        commit: ','
+      width: 10
+    - click:
+        label: '?'
+        commit: '?'
+      width: 10
+    - click:
+        label: '!'
+        commit: '!'
+      width: 10
+    - click:
+        label: ''''
+        commit: ''''
+      width: 10
+    - click:
+        label: '['
+        commit: '['
+      width: 10
+    - click:
+        label: ']'
+        commit: ']'
+      width: 10
+    - click:
+        label: '{'
+        commit: '{'
+      width: 10
+    - click: BackSpace
+      width: 20
+      key_back_color: off_key_back_color
+    - click: Keyboard_default
+      width: 13
+      key_back_color: off_key_back_color
+    - click: Reference_symbols
+      width: 13
+      key_back_color: off_key_back_color
+    - click: space
+      key_text_size: 20
+      width: 46
+    - click: Return
+      key_text_size: 24
+      width: 28
+      key_back_color: off_key_back_color
+    - click: IME_switch
+      long_click: IME_switch
+      label_symbol: ' '
+      key_text_size: 20
+      width: 14
+      key_back_color: keyboard_back_color
+      height: 36
+    - width: 72
+    - click: VOICE_ASSIST
+      width: 14
+      key_back_color: keyboard_back_color
+      height: 36
+liquid_keyboard:
+  row: 4
+  row_land: 4
+  key_height: 43
+  key_height_land: 35
+  single_width: 43
+  vertical_gap: 4
+  margin_x: 3
+  keyboards:
+  - emoji
+  emoji:
+    type: SINGLE
+    name: 表情
+    keys: 😀😃😄😁😆😅🤣😂🙂🙃🫠😉😊😇🥰😍🤩😘😗☺😚😙🥲😋😛😜🤪😝🤑🤗🤭🫢🫣🤫🤔🫡🤐🤨😐😑😶🫥😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳🥸😎🤓🧐😕🫤😟🙁☹😮😯😲😳🥺🥹😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊💌💘💝💖💗💓💞💕💟❣💔❤🧡💛💚💙💜🤎🖤🤍💋💯💢💥💫💦💨🕳💬🗨🗯💭💤👋🤚🖐✋🖖🫱🫲🫳🫴👌🤌🤏✌🤞🫰🤟🤘🤙👈👉👆🖕👇☝🫵👍👎✊👊🤛🤜👏🙌🫶👐🤲🤝🙏✍💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🫀🫁🦷🦴👀👁👅👄🫦👶🧒👦👧🧑👱👨🧔👩🧓👴👵🙍🙎🙅🙆💁🙋🧏🙇🤦🤷👮🕵💂🥷👷🫅🤴👸👳👲🧕🤵👰🤰🫃🫄🤱👼🎅🤶🦸🦹🧙🧚🧛🧜🧝🧞🧟🧌💆💇🚶🧍🧎🏃💃🕺🕴👯🧖🧗🤺🏇⛷🏂🏌🏄🚣🏊⛹🏋🚴🚵🤸🤼🤽🤾🤹🧘🛀🛌👭👫👬💏💑👪🗣👤👥🫂👣🏻🏼🏽🏾🏿🦰🦱🦳🦲🐵🐒🦍🦧🐶🐕🦮🐩🐺🦊🦝🐱🐈🦁🐯🐅🐆🐴🐎🦄🦓🦌🦬🐮🐂🐃🐄🐷🐖🐗🐽🐏🐑🐐🐪🐫🦙🦒🐘🦣🦏🦛🐭🐁🐀🐹🐰🐇🐿🦫🦔🦇🐻🐨🐼🦥🦦🦨🦘🦡🐾🦃🐔🐓🐣🐤🐥🐦🐧🕊🦅🦆🦢🦉🦤🪶🦩🦚🦜🐸🐊🐢🦎🐍🐲🐉🦕🦖🐳🐋🐬🦭🐟🐠🐡🦈🐙🐚🪸🐌🦋🐛🐜🐝🪲🐞🦗🪳🕷🕸🦂🦟🪰🪱🦠💐🌸💮🪷🏵🌹🥀🌺🌻🌼🌷🌱🪴🌲🌳🌴🌵🌾🌿☘🍀🍁🍂🍃🪹🪺🍄🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🫒🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🍞🥐🥖🫓🥨🥯🥞🧇🧀🍖🍗🥩🥓🍔🍟🍕🌭🥪🌮🌯🫔🥙🧆🥚🍳🥘🍲🫕🥣🥗🍿🧈🧂🥫🍱🍘🍙🍚🍛🍜🍝🍠🍢🍣🍤🍥🥮🍡🥟🥠🥡🦀🦞🦐🦑🦪🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯🍼🥛☕🫖🍵🍶🍾🍷🍸🍹🍺🍻🥂🥃🫗🥤🧋🧃🧉🧊🥢🍽🍴🥄🔪🫙🏺🌍🌎🌏🌐🗺🗾🧭🏔⛰🌋🗻🏕🏖🏜🏝🏞🏟🏛🏗🧱🪨🪵🛖🏘🏚🏠🏡🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🛕🕍⛩🕋⛲⛺🌁🌃🏙🌄🌅🌆🌇🌉♨🎠🛝🎡🎢💈🎪🚂🚃🚄🚅🚆🚇🚈🚉🚊🚝🚞🚋🚌🚍🚎🚐🚑🚒🚓🚔🚕🚖🚗🚘🚙🛻🚚🚛🚜🏎🏍🛵🦽🦼🛺🚲🛴🛹🛼🚏🛣🛤🛢⛽🛞🚨🚥🚦🛑🚧⚓🛟⛵🛶🚤🛳⛴🛥🚢✈🛩🛫🛬🪂💺🚁🚟🚠🚡🛰🚀🛸🛎🧳⌛⏳⌚⏰⏱⏲🕰🕛🕧🕐🕜🕑🕝🕒🕞🕓🕟🕔🕠🕕🕡🕖🕢🕗🕣🕘🕤🕙🕥🕚🕦🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚🌛🌜🌡☀🌝🌞🪐⭐🌟🌠🌌☁⛅⛈🌤🌥🌦🌧🌨🌩🌪🌫🌬🌀🌈🌂☂☔⛱⚡❄☃⛄☄🔥💧🌊🎃🎄🎆🎇🧨✨🎈🎉🎊🎋🎍🎎🎏🎐🎑🧧🎀🎁🎗🎟🎫🎖🏆🏅🥇🥈🥉⚽⚾🥎🏀🏐🏈🏉🎾🥏🎳🏏🏑🏒🥍🏓🏸🥊🥋🥅⛳⛸🎣🤿🎽🎿🛷🥌🎯🪀🪁🎱🔮🪄🎮🕹🎰🎲🧩🧸🪅🪩🪆♠♥♦♣♟🃏🀄🎴🔫🎭🖼🎨🧵🪡🧶🪢👓🕶🥽🥼🦺👔👕👖🧣🧤🧥🧦👗👘🥻🩱🩲🩳👙👚👛👜👝🛍🎒🩴👞👟🥾🥿👠👡🩰👢👑👒🎩🎓🧢🪖⛑📿💄💍💎🔇🔈🔉🔊📢📣📯🔔🔕🎼🎵🎶🎙🎚🎛🎤🎧📻🎷🪗🎸🎹🎺🎻🪕🥁🪘📱📲☎📞📟📠🔋🪫🔌💻🖥🖨⌨🖱🖲💽💾💿📀🧮🎥🎞📽🎬📺📷📸📹📼🔍🔎🕯💡🔦🏮🪔📔📕📖📗📘📙📚📓📒📃📜📄📰🗞📑🔖🏷💰🪙💴💵💶💷💸💳🧾💹✉📧📨📩📤📥📦📫📪📬📭📮🗳✏✒🖋🖊🖌🖍📝💼📁📂🗂📅📆🗒🗓📇📈📉📊📋📌📍📎🖇📏📐✂🗃🗄🗑🔒🔓🔏🔐🔑🗝💣🔨🪓⛏⚒🛠🗡⚔🪃🏹🛡🪚🔧🪛🔩⚙🗜⚖🦯🔗⛓🪝🧰🧲🪜⚗🧪🧫🧬🔬🔭📡💉🩸💊🩹🩼🩺🩻🚪🛗🪞🪟🛏🛋🪑🚽🪠🚿🛁🪤🪒🧴🧷🧹🧺🧻🪣🧼🫧🪥🧽🧯🛒🧿🪬🚬⚰🪦⚱🗿🪧🪪🏧🚮🚰♿🚹🚺🚻🚼🚾🛂🛃🛄🛅⚠🚸⛔🚫🚳🚭🚯🚱🚷📵🔞☢☣⬆↗➡↘⬇↙⬅↖↕↔↩↪⤴⤵🔃🔄🔙🔚🔛🔜🔝🛐⚛🕉✡☸☯✝☦☪☮🕎🔯♈♉♊♋♌♍♎♏♐♑♒♓⛎🔀🔁🔂▶⏩⏭⏯◀⏪⏮🔼⏫🔽⏬⏸⏹⏺⏏🎦🔅🔆📶📳📴♀♂⚧✖➕➖➗🟰♾‼⁉❓❔❕❗〰💱💲⚕♻⚜🔱📛🔰⭕✅☑✔❌❎➰➿〽✳✴❇©®™🔟🔠🔡🔢🔣🔤🅰🆎🅱🆑🆒🆓ℹ🆔Ⓜ🆕🆖🅾🆗🅿🆘🆙🆚🈁🈂🈷🈶🈯🉐🈹🈚🈲🉑🈸🈴🈳㊗㊙🈺🈵🔴🟠🟡🟢🔵🟣🟤⚫⚪🟥🟧🟨🟩🟦🟪🟫⬛⬜◼◻◾◽▪▫🔶🔷🔸🔹🔺🔻💠🔘🔳🔲🏁🚩🎌🏴🏳
+  fixed_key_bar:
+    position: bottom
+    keys:
+    - liquid_keyboard_exit
+    - space
+    - BackSpace
+    - Return
+tool_bar:
+  primary_button:
+    foreground:
+      style: ' '
+      padding: 0
+    action: ReferenceNoOp
+    size:
+    - 0
+    - 40
+  button_spacing: 0
+  buttons:
+  - foreground:
+      style: ic@chevron-down
+      font_size: 20
+    action: Hide
+    size:
+    - 40
+    - 40

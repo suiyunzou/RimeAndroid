@@ -1,0 +1,17 @@
+{
+  "crisp": {
+    "sha256": "41ed3af98f6e99716e03016acc822dfb1ddc76815b74699c76a8e832adb6f7c3",
+    "samples": 1560,
+    "rate": 24000
+  },
+  "soft": {
+    "sha256": "deee606f1fc14183bc51019d614bfb2a87bad9b7f3afedd957889c4a43be10f4",
+    "samples": 1560,
+    "rate": 24000
+  },
+  "deep": {
+    "sha256": "714b948dae5011505a40fb50b83ac5eda62c5da791de34fd284b17c0ff067bd9",
+    "samples": 1560,
+    "rate": 24000
+  }
+}
