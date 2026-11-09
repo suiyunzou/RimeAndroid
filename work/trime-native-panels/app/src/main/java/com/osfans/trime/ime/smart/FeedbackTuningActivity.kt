@@ -27,6 +27,7 @@ class FeedbackTuningActivity : Activity() {
     private var backspace = false
     private var picker = false
     private var favoriteOnly = false
+    private var toneCategory = 0
     private var previewGeneration = 0
     private val ink = 0xff161618.toInt()
     private val muted = 0xff818186.toInt()
@@ -101,6 +102,14 @@ class FeedbackTuningActivity : Activity() {
         toggle(sound,"松手声音",p.releaseSound){prefs.save(backspace,prefs.profile(backspace).copy(releaseSound=it))}
         space(22);title("触感");val haptic=group()
         row(haptic,"按下","${if(backspace)"退格" else "普通按键"}独立设置")
+        row(haptic,"触感类型",FeedbackTuningProfile.HAPTICS[p.hapticStyle].orEmpty()) {
+            val styles=FeedbackTuningProfile.HAPTICS
+            android.app.AlertDialog.Builder(this).setTitle("触感类型")
+                .setSingleChoiceItems(styles.values.toTypedArray(),styles.keys.indexOf(prefs.profile(backspace).hapticStyle)){dialog,index->
+                    prefs.save(backspace,prefs.profile(backspace).copy(hapticStyle=styles.keys.elementAt(index)))
+                    dialog.dismiss();render()
+                }.setNegativeButton("取消",null).show()
+        }
         slider(haptic,"力度",p.pressStrength*100/255,100){prefs.save(backspace,prefs.profile(backspace).copy(pressStrength=it*255/100))}
         slider(haptic,"按下时长",p.pressDuration,40," ms",1){prefs.save(backspace,prefs.profile(backspace).copy(pressDuration=it))}
         slider(haptic,"松手",p.releaseStrength*100/255,100){prefs.save(backspace,prefs.profile(backspace).copy(releaseStrength=it*255/100))}
@@ -110,7 +119,7 @@ class FeedbackTuningActivity : Activity() {
         space();val typing=group();val editor=EditText(this).apply {hint="在这里试打";textSize=18f;setSingleLine(false);setTextColor(ink);setHintTextColor(muted);visibility=View.GONE;setPadding(dp(16),dp(12),dp(16),dp(12));minLines=2}
         row(typing,"试用键盘","⌨") { editor.visibility=View.VISIBLE;editor.requestFocus();(getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(editor,InputMethodManager.SHOW_IMPLICIT) }
         typing.addView(editor,LinearLayout.LayoutParams(-1,-2))
-        space(8);body.addView(text("机械音色为本地合成；不同设备的扬声器和振动马达会影响体验。",12f,muted).apply{setPadding(dp(16),0,dp(16),0)})
+        space(12);row(group(),"音效来源","查看"){android.app.AlertDialog.Builder(this).setTitle("音效来源").setMessage("机械轴与静电容录音：Mechvibes，MIT 许可。另有本项目合成音，CC0。\n\nhttps://github.com/hainguyents13/mechvibes").setPositiveButton("完成",null).show()}
     }
     private fun preview(view:View,tone:String?=null) {
         val key=if(backspace)KeyEvent.KEYCODE_DEL else KeyEvent.KEYCODE_A
@@ -121,11 +130,17 @@ class FeedbackTuningActivity : Activity() {
     }
     private fun renderPicker() {
         val g=group();segment(g,listOf("全部","已收藏"),if(favoriteOnly)1 else 0){favoriteOnly=it==1;render()}
-        val entries=FeedbackTuningProfile.TONES.filterKeys{!favoriteOnly||it in prefs.favorites}
+        segment(g,listOf("全部音色","机械轴","键盘","合成"),toneCategory){toneCategory=it;render()}
+        val entries=FeedbackTuningProfile.TONES.filterKeys{(!favoriteOnly||it in prefs.favorites) && when(toneCategory){
+            1->it in FeedbackTuningProfile.RECORDINGS && it!="topre"
+            2->it=="system" || it=="topre"
+            3->it in listOf("crisp","soft","deep")
+            else->true
+        }}
         if(entries.isEmpty())row(g,"暂无收藏")
         entries.forEach{(id,name)->
             val line=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(6),dp(12),dp(6))}
-            line.addView(text(name,18f).apply{setPadding(dp(5),0,0,0);setOnClickListener{prefs.save(backspace,prefs.profile(backspace).copy(tone=id));picker=false;render()};contentDescription="选择 $name"},LinearLayout.LayoutParams(0,dp(58),1f))
+            line.addView(text((if(id==prefs.profile(backspace).tone)"✓ " else "")+name,16f).apply{setPadding(dp(5),0,0,0);setOnClickListener{prefs.save(backspace,prefs.profile(backspace).copy(tone=id));picker=false;render()};contentDescription="选择 $name"},LinearLayout.LayoutParams(0,dp(58),1f))
             line.addView(text("▶",21f,blue).apply{gravity=Gravity.CENTER;contentDescription="试听 $name";setOnClickListener{preview(this,id)}},LinearLayout.LayoutParams(dp(43),dp(50)))
             line.addView(text(if(id in prefs.favorites)"★" else "☆",25f,blue).apply{gravity=Gravity.CENTER;contentDescription="收藏 $name";isSelected=id in prefs.favorites;setOnClickListener{prefs.favorites=if(id in prefs.favorites)prefs.favorites-id else prefs.favorites+id;render()}},LinearLayout.LayoutParams(dp(43),dp(50)))
             g.addView(line)

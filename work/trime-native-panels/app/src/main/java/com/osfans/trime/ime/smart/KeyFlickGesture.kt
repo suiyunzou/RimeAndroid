@@ -15,7 +15,7 @@ import kotlin.math.hypot
  */
 class KeyFlickGesture(density: Float) {
     enum class State { IDLE, DOWN, FLICK_DETECTED, LONG_PRESSED, UP, CANCELLED }
-    enum class Action { NONE, TAP, FLICK_UP, FLICK_DOWN, LONG_PRESS, CANCEL }
+    enum class Action { NONE, TAP, FLICK_UP, FLICK_DOWN, LOCK_FLICK_UP, LOCK_FLICK_DOWN, LONG_PRESS, CANCEL }
 
     init { require(density.isFinite() && density > 0f) }
 
@@ -34,6 +34,8 @@ class KeyFlickGesture(density: Float) {
     private var startY = 0f
     private var downTimeMs = 0L
     private var movedBeyondSlop = false
+    private var heldBeforeMovement = false
+    private var flickDetectedAt = 0L
 
     fun down(xPx: Float, yPx: Float, timeMs: Long, allowLongPress: Boolean = true): Action {
         reset()
@@ -56,13 +58,17 @@ class KeyFlickGesture(density: Float) {
         val dx = xPx - startX
         val dy = yPx - startY
         if (hypot(dx, dy) > touchSlopPx) {
+            if (!movedBeyondSlop) heldBeforeMovement = timeMs - downTimeMs >= SYMBOL_HOLD_MS
             movedBeyondSlop = true
             longPressPending = false
         }
         if (state == State.DOWN && timeMs - downTimeMs <= FLICK_MAX_DURATION_MS &&
             abs(dy) >= flickDistancePx && abs(dx) / abs(dy) < FLICK_MAX_HORIZONTAL_RATIO
         ) {
-            pendingFlick = if (dy > 0f) Action.FLICK_DOWN else Action.FLICK_UP
+            pendingFlick = if (heldBeforeMovement) {
+                if (dy > 0f) Action.LOCK_FLICK_DOWN else Action.LOCK_FLICK_UP
+            } else if (dy > 0f) Action.FLICK_DOWN else Action.FLICK_UP
+            flickDetectedAt = timeMs
             state = State.FLICK_DETECTED
             longPressPending = false
         }
@@ -101,7 +107,8 @@ class KeyFlickGesture(density: Float) {
             event == Action.CANCEL -> Action.CANCEL
             event == Action.LONG_PRESS -> Action.LONG_PRESS
             state == State.LONG_PRESSED -> Action.NONE
-            state == State.FLICK_DETECTED && timeMs - downTimeMs <= FLICK_MAX_DURATION_MS -> pendingFlick
+            state == State.FLICK_DETECTED && (if (heldBeforeMovement) timeMs - flickDetectedAt <= HELD_FLICK_FINISH_MS
+                else timeMs - downTimeMs <= FLICK_MAX_DURATION_MS) -> pendingFlick
             state == State.DOWN && hypot(xPx - startX, yPx - startY) < flickDistancePx -> Action.TAP
             else -> Action.CANCEL
         }
@@ -133,6 +140,8 @@ class KeyFlickGesture(density: Float) {
         pendingFlick = Action.NONE
         longPressPending = false
         movedBeyondSlop = false
+        heldBeforeMovement = false
+        flickDetectedAt = 0L
         longPressDeadlineMs = 0L
     }
 
@@ -143,6 +152,8 @@ class KeyFlickGesture(density: Float) {
         const val FLICK_MAX_HORIZONTAL_RATIO = 0.7f
         // Deliberate hold, not an ordinary slightly slow flick. This is an
         // implementation threshold, not a timing measurement from the video.
-        const val LONG_PRESS_MS = 550L
+        const val HELD_FLICK_FINISH_MS = 600L
+        const val SYMBOL_HOLD_MS = 350L
+        const val LONG_PRESS_MS = 800L
     }
 }

@@ -65,6 +65,7 @@ class SmartSettingsActivity : Activity() {
     private var gestureUp=false
     private var keyPreviewLayout="qwerty"
     private var bindingPreview:SmartKeyboardPreview?=null
+    private var modelLabelView:TextView?=null
     private var heightExpanded=false
     private val activityScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var dark=false
@@ -92,7 +93,18 @@ class SmartSettingsActivity : Activity() {
     }
     override fun onSaveInstanceState(out:Bundle){savePageScroll();super.onSaveInstanceState(out);out.putString("page",page);out.putInt("wheelTab",wheelTab);out.putBoolean("gestureUp",gestureUp);out.putString("keyPreviewLayout",keyPreviewLayout);out.putBoolean("heightExpanded",heightExpanded);out.putBundle("pageScrollPositions",Bundle().apply{pageScrollPositions.forEach{(key,value)->putInt(key,value)}})}
     override fun onDestroy(){activityScope.cancel();super.onDestroy()}
-    override fun onResume(){super.onResume();if(::prefs.isInitialized)render()}
+    override fun onResume(){
+        super.onResume()
+        if(::prefs.isInitialized){
+            render()
+            activityScope.launch {
+                withContext(Dispatchers.IO) {
+                    runCatching { ModelManagerStore(DataManager.userDataDir) { a,b -> android.system.Os.rename(a.absolutePath,b.absolutePath) }.identify() }
+                }
+                if(!isDestroyed)modelLabelView?.text=ModelManagerStore.currentLabel(DataManager.userDataDir)
+            }
+        }
+    }
     override fun onPause(){savePageScroll();super.onPause()}
     @Suppress("DEPRECATION")
     override fun onBackPressed(){if(page=="home")finish() else open("home")}
@@ -158,7 +170,7 @@ class SmartSettingsActivity : Activity() {
         homeCard("keys","按键","拨动输入的符号与功能",0xff19bcbf.toInt()){open("keys")}
         homeCard("wheel","空格轮盘","快捷功能与轮盘外观",0xffe19843.toInt()){open("wheel")}
         homeCard("feedback","声音与触感","试听音色与调节按键反馈",0xffd17e9c.toInt()){startActivity(Intent(this,FeedbackTuningActivity::class.java))}
-        homeCard("dictionary","本地词库","导入与管理自己的词条",0xff5c9a75.toInt()){startActivity(Intent(this,LocalDictionaryActivity::class.java))}
+        homeCard("dictionary","词库","下载万象词库与添加自己的词条",0xff5c9a75.toInt()){startActivity(Intent(this,LocalDictionaryActivity::class.java))}
         homeCard("privacy","隐私","离线运行与本地数据",0xff5d92be.toInt()){startActivity(Intent(this,OfflinePrivacyActivity::class.java))}
     }
     private fun inputStatusCard(){
@@ -215,10 +227,15 @@ class SmartSettingsActivity : Activity() {
     }
     private fun inputPage(){
         space(14)
+        val sms=group();row(sms,"短信验证码",if(SmsCodeInbox.isAvailable(this))"已开启" else "未开启"){startActivity(Intent(this,SmsCodeSettingsActivity::class.java))}
+        space()
         val chinese=group();toggle(chinese,"拼音纠错",prefs.correction){prefs.correction=it};toggle(chinese,"候选中显示表情",prefs.candidateEmoji){prefs.candidateEmoji=it}
         row(chinese,"纠错样式",CorrectionStyle.labels[CorrectionStyleSpans.selected(this)].orEmpty()){startActivity(Intent(this,CorrectionStyleActivity::class.java))}
-        val model=File(DataManager.userDataDir,"wanxiang-lts-zh-hans.gram")
-        row(chinese,"整句模型",if(model.isFile && model.length()>1024L*1024)"已安装" else "未安装")
+        row(chinese,"整句模型","切换"){startActivity(Intent(this,ModelManagerActivity::class.java))}
+        chinese.addView(text(ModelManagerStore.currentLabel(DataManager.userDataDir),14f,muted).apply{
+            modelLabelView=this
+            setPadding(dp(16),0,dp(16),dp(12));setOnClickListener{startActivity(Intent(this@SmartSettingsActivity,ModelManagerActivity::class.java))}
+        })
         space();section("实验性功能")
         val glide=GlidePrefs(this)
         val experimental=group();toggle(experimental,"滑行输入",glide.enabled){glide.enabled=it;render()}
@@ -247,7 +264,7 @@ class SmartSettingsActivity : Activity() {
         row(g,"高度",if(keyboardHeight()==212)"标准" else "自定义"){startActivity(Intent(this,ReferenceHeightActivity::class.java))}
         row(g,"布局",if(prefs.layout=="t9")"九宫格" else "全键盘"){choose("键盘布局",listOf("全键盘","九宫格"),if(prefs.layout=="t9")1 else 0){prefs.layout=if(it==1)"t9" else "qwerty";render()}}
         space();val theme=group();val mode=selectedUiMode()
-        row(theme,"键盘主题",if(ThemeManager.prefs.selectedTheme.getValue()=="rerime-reference.trime")"视频参考" else "原有主题"){selectKeyboardTheme()}
+        row(theme,"键盘主题",if(ThemeManager.prefs.selectedTheme.getValue()=="rerime-reference.trime")"ios风格" else "原有主题"){selectKeyboardTheme()}
         row(theme,"主题",when(mode){AppPrefs.Advanced.UiMode.LIGHT->"浅色";AppPrefs.Advanced.UiMode.DARK->"深色";else->"跟随系统"}){
             choose("主题",listOf("跟随系统","浅色","深色"),when(mode){AppPrefs.Advanced.UiMode.LIGHT->1;AppPrefs.Advanced.UiMode.DARK->2;else->0}){ index->
                 extra.edit().putString("reference_settings_theme",listOf("auto","light","dark")[index]).apply()
@@ -287,7 +304,7 @@ class SmartSettingsActivity : Activity() {
         val available=try { withContext(Dispatchers.IO) { ThemeManager.getAllThemes().distinctBy{it.configId} } } finally { readingThemes=false }
         if(isFinishing || page!="display")return@launch
         val ids=(listOf("rerime-reference.trime","wechat-clean.trime")+available.map{it.configId}).distinct()
-        val names=ids.map{id->when(id){"rerime-reference.trime"->"视频参考";"wechat-clean.trime"->"原有微信风格";else->available.firstOrNull{it.configId==id}?.name?:id}}
+        val names=ids.map{id->when(id){"rerime-reference.trime"->"ios风格";"wechat-clean.trime"->"原有微信风格";else->available.firstOrNull{it.configId==id}?.name?:id}}
         choose("键盘主题",names,ids.indexOf(ThemeManager.prefs.selectedTheme.getValue()).coerceAtLeast(0)){index->
             val target=ids[index]
             if(available.none{it.configId==target}){Toast.makeText(this@SmartSettingsActivity,"此主题暂不可用",Toast.LENGTH_SHORT).show();return@choose}
@@ -314,9 +331,11 @@ class SmartSettingsActivity : Activity() {
         val demonstration=FrameLayout(this).apply{background=rounded(trackColor,16);contentDescription=if(gestureUp)"向上拨动 Q 预览" else "向下拨动 Q 预览"}
         val binding=prefs.binding("q",gestureUp)
         val value=if(binding==null)"1" else KeyBindingLabels.label(binding)
-        val demoKey=text("Q",27f).apply{gravity=Gravity.CENTER;background=rounded(selectedColor,10)}
-        demonstration.addView(demoKey,FrameLayout.LayoutParams(dp(54),dp(62),Gravity.CENTER))
-        val demoResult=text(if(direction==FlickDirection.OFF)"已关闭" else value,20f,0xff169bdd.toInt()).apply{gravity=Gravity.CENTER;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END}
+        val demoKey=text("Q",27f).apply{gravity=Gravity.CENTER}
+        val cap=FrameLayout(this).apply{background=rounded(selectedColor,10);addView(demoKey,FrameLayout.LayoutParams(-1,-1))}
+        cap.addView(text(KeyBindingLabels.corner(binding).ifEmpty{if(binding=="text:")"" else "1"},11f,muted).apply{gravity=Gravity.TOP or Gravity.END;setPadding(0,dp(3),dp(4),0)},FrameLayout.LayoutParams(-1,-1))
+        demonstration.addView(cap,FrameLayout.LayoutParams(dp(54),dp(62),Gravity.CENTER))
+        val demoResult=text(if(direction==FlickDirection.OFF)"已关闭" else "",15f,0xff169bdd.toInt()).apply{gravity=Gravity.CENTER;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END}
         demonstration.addView(demoResult,FrameLayout.LayoutParams(-1,dp(30),if(gestureUp)Gravity.TOP else Gravity.BOTTOM))
         var startY=0f
         demonstration.setOnTouchListener{_,event->
@@ -326,13 +345,13 @@ class SmartSettingsActivity : Activity() {
                 (kotlin.math.abs(event.x-demonstration.width/2f)>dp(48) || kotlin.math.abs(event.y-demonstration.height/2f)>dp(48))) return@setOnTouchListener false
             when(event.actionMasked){
                 MotionEvent.ACTION_DOWN->{startY=event.y;demonstration.parent?.requestDisallowInterceptTouchEvent(true);true}
-                MotionEvent.ACTION_MOVE->{val moved=if(gestureUp)startY-event.y else event.y-startY;demoKey.text=if(direction!=FlickDirection.OFF&&moved>dp(16))KeyBindingLabels.corner(binding).ifEmpty{"1"} else "Q";true}
-                MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{demoKey.text="Q";demonstration.parent?.requestDisallowInterceptTouchEvent(false);true}
+                MotionEvent.ACTION_MOVE->{val moved=if(gestureUp)startY-event.y else event.y-startY;val selected=direction!=FlickDirection.OFF&&moved>dp(16);demoKey.text=if(selected)KeyBindingLabels.corner(binding).ifEmpty{if(binding=="text:")"" else "1"} else "Q";demoResult.text=if(selected)value else "";cap.translationY=(event.y-startY).coerceIn(-dp(12).toFloat(),dp(12).toFloat());true}
+                MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{demoKey.text="Q";demoResult.text=if(direction==FlickDirection.OFF)"已关闭" else "";cap.translationY=0f;demonstration.parent?.requestDisallowInterceptTouchEvent(false);true}
                 else->false
             }
         }
         demoCard.addView(demonstration,LinearLayout.LayoutParams(-1,dp(128)).apply{topMargin=dp(12)})
-        body.addView(text("上拨和下拨只能选一个；两种方向的内容分别保存。",13f,muted).apply{setPadding(dp(12),dp(10),dp(12),0)})
+        body.addView(text("快拨输入 · 按住再拨锁定  ⓘ",13f,muted).apply{setPadding(dp(12),dp(10),dp(12),0);contentDescription="拨动手势说明";setOnClickListener{android.app.AlertDialog.Builder(this@SmartSettingsActivity).setTitle("拨动与长按").setMessage("快拨：输入一次角标。\n按住 350 毫秒再拨：输入并锁定角标。\n原地按住 800 毫秒：移动光标。\n\n上拨和下拨的内容分别保存。").setPositiveButton("完成",null).show()}})
         if(direction==FlickDirection.OFF){bindingPreview=null;return}
         if(GlidePrefs(this).enabled){
             space(8)

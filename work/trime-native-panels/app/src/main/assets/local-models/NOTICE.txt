@@ -1,0 +1,13 @@
+Wanxiang LTS · four-character-priority derivative · 2026-11-08
+Original creators: amzxyz and Wanxiang / RIME-LMDG contributors
+Source: https://github.com/amzxyz/rime-wanxiang-data/releases/tag/LTS
+License: CC BY 4.0; https://creativecommons.org/licenses/by/4.0/
+Modified locally; not an official upstream compact release.
+Original: 418080812 bytes; SHA256 769854c83f6c914a05a1e1abb67c31c00f1ae622a41878e05957bcdee3dbda9a
+Derivative: 48419884 bytes; SHA256 c297a1a851efcd587d2651564881e83fe7527e6083cb18a0a735b8aa32bcdab4
+Rule: unicode_length <= 3 OR encoded_last_byte == 0x24 OR score > 223327 OR (unicode_length == 4 AND score >= 180500)
+Original stored integer scores preserved; 6713209 keys retained.
+All 4705 literal '$' rear entries retained. The 0x24 tail-byte class is a conservative superset.
+No sample-specific allowlist, no sampling and no weight recalibration.
+Existing language stem retained for configuration compatibility. See comparison report for observed quality tradeoffs.
+This is a local statistical language model, not the proprietary ReRime model.

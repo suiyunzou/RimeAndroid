@@ -26,7 +26,7 @@ import org.kodein.di.DI
 import org.kodein.di.instance
 import splitties.dimensions.dp
 
-/** Local calculator; expression drafts never enter the host editor. */
+/** Local arithmetic with ordered, ownership-checked editing in the host input field. */
 class CalculatorWindow(di: DI) : BoardWindow.NoBarBoardWindow(di) {
     private fun dp(value: Int): Int = context.dp(value)
     private val service: TrimeInputMethodService by instance()
@@ -40,9 +40,17 @@ class CalculatorWindow(di: DI) : BoardWindow.NoBarBoardWindow(di) {
     private var oldBar = View.VISIBLE
     private var generation = 0
     private var committing = false
-    private var expression = ""
-    private var submitted = false
-    private var resultShown = false
+    private val calculator = CalculatorEditorSession()
+    private data class PendingKey(val label: String, val session: Long)
+    private val pendingKeys = ArrayDeque<PendingKey>()
+    private var editorSession = -1L
+    private val resultDisplay by lazy { TextView(context).apply {
+        textSize = 18f
+        gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        setPadding(0, 0, px(18), 0)
+        isSingleLine = true
+        contentDescription = "实时计算结果"
+    } }
     private val keys = mutableListOf<Button>()
     private val expressionDisplay by lazy {
         TextView(context).apply {
@@ -71,7 +79,11 @@ class CalculatorWindow(di: DI) : BoardWindow.NoBarBoardWindow(di) {
             orientation = LinearLayout.VERTICAL
             clipToOutline = true
             addView(FrameLayout(context).apply {
-                addView(expressionScroll, FrameLayout.LayoutParams(-1, -1))
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(expressionScroll, LinearLayout.LayoutParams(0, -1, 1f))
+                    addView(resultDisplay, LinearLayout.LayoutParams(px(176), -1))
+                }, FrameLayout.LayoutParams(-1, -1))
                 addView(status, FrameLayout.LayoutParams(-1, px(21), Gravity.BOTTOM))
             }, LinearLayout.LayoutParams(-1, px(76)))
             val keypad = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(px(4), 0, px(4), 0) }
@@ -86,7 +98,7 @@ class CalculatorWindow(di: DI) : BoardWindow.NoBarBoardWindow(di) {
                         val button = ReferencePanelStyle.button(context, scope, label) { input(label) }.apply {
                             textSize = px(if (label in listOf("ABC", "空格", "换行")) 19 else if (label == "√") 32 else 25) / resources.displayMetrics.scaledDensity
                             stateListAnimator = null; elevation = 0f; translationZ = 0f
-                            contentDescription = when (label) { "⌫" -> "删除一位，长按清空算式"; "=" -> "计算并上屏"; "ABC" -> "返回字母键盘"; else -> label }
+                            contentDescription = when (label) { "⌫" -> "删除一位，长按清空算式"; "=" -> "追加等号与结果"; "ABC" -> "返回字母键盘"; else -> label }
                             if (label == "⌫") setOnLongClickListener { input("C"); true }
                         }
                         keys.add(button)
@@ -131,55 +143,55 @@ class CalculatorWindow(di: DI) : BoardWindow.NoBarBoardWindow(di) {
         }
     }
     private fun renderExpression() {
+        val expression = calculator.expression
         expressionDisplay.text = expression.ifEmpty { "输入算式" }
         expressionDisplay.setTextColor(if (expression.isEmpty()) ColorUtils.blendARGB(scope.colors.keyTextColor, scope.colors.keyboardBackColor, .45f) else scope.colors.keyTextColor)
+        resultDisplay.text = calculator.preview
+        resultDisplay.setTextColor(scope.colors.keyTextColor)
         expressionScroll.post { expressionScroll.fullScroll(View.FOCUS_RIGHT) }
     }
-    private fun commit(text: String, onSuccess: () -> Unit = {}) {
-        if (committing) return
-        committing = true
-        val token = generation
-        service.commitPanelText(text, isActive = { attached && token == generation }) { success ->
-            if (token == generation) committing = false
-            if (attached && token == generation) {
-                if (success) onSuccess() else { status.text = "未能上屏，请点选输入框后重试"; status.visibility = View.VISIBLE }
-            }
-        }
-    }
     private fun input(label: String) {
-        if (committing && label != "ABC" && label != "键盘") return
+        if (label == "ABC" || label == "键盘") { windowManager.attachWindow(KeyboardWindow); return }
         status.visibility = View.GONE
-        when (label) {
-            "键盘", "ABC" -> { windowManager.attachWindow(KeyboardWindow); return }
-            "空格", "换行" -> {
-                val text = if (label == "空格") " " else "\n"
-                commit(text)
-                return
+        pendingKeys.addLast(PendingKey(label, service.panelEditorSessionId))
+        drainKeys()
+    }
+    private fun drainKeys() {
+        if (committing || !attached || pendingKeys.isEmpty()) return
+        val key = pendingKeys.removeFirst()
+        val token = generation
+        committing = true
+        var error: String? = null
+        service.editPanelText(sessionId = key.session, isActive = { attached && token == generation }, edit = { connection ->
+            if (editorSession != key.session) { calculator.reset(); editorSession = key.session }
+            runCatching {
+                calculator.input(key.label, object : CalculatorEditorSession.Editor {
+                    override fun snapshot(): CalculatorEditorSession.Snapshot? {
+                        val value = connection.getExtractedText(android.view.inputmethod.ExtractedTextRequest().apply {
+                            hintMaxChars = 8192; hintMaxLines = 128
+                        }, 0) ?: return null
+                        val text = value.text?.toString() ?: return null
+                        if (text.length > 32768 || value.partialStartOffset >= 0) return null
+                        return CalculatorEditorSession.Snapshot(text, value.startOffset,
+                            value.startOffset + value.selectionStart, value.startOffset + value.selectionEnd)
+                    }
+                    override fun replace(start: Int, end: Int, text: String): Boolean {
+                        if (!connection.setSelection(start, end)) return false
+                        return connection.commitText(text, 1)
+                    }
+                })
+            }.getOrElse { error = it.message; false }
+        }) { success ->
+            if (token != generation) return@editPanelText
+            committing = false
+            if (!success) {
+                pendingKeys.clear()
+                status.text = error ?: "未能写入，请点选输入框后重试"
+                status.visibility = View.VISIBLE
             }
-            "C" -> { expression = ""; submitted = false; resultShown = false }
-            "⌫" -> { expression = expression.dropLast(1); submitted = false; resultShown = false }
-            "=" -> {
-                if (submitted) return
-                val result = runCatching { CalculatorEngine.evaluate(expression) }.getOrElse {
-                    status.text = it.message ?: "算式无效"
-                    status.visibility = View.VISIBLE
-                    return
-                }
-                commit(result) {
-                    expression = result; submitted = true; resultShown = true
-                    renderExpression()
-                }
-                return
-            }
-            else -> {
-                if (resultShown && (label.first().isDigit() || label == "." || label == "√" || label == "(")) expression = ""
-                if (expression.length >= CalculatorEngine.MAX_LENGTH) { status.text = "算式过长"; status.visibility = View.VISIBLE; return }
-                expression += label
-                submitted = false
-                resultShown = false
-            }
+            renderExpression()
+            drainKeys()
         }
-        renderExpression()
     }
     override fun onCreateView(): View = root.also { refreshColors(); renderExpression() }
     override fun onAttached() {
@@ -193,7 +205,7 @@ class CalculatorWindow(di: DI) : BoardWindow.NoBarBoardWindow(di) {
         refreshColors()
     }
     override fun onDetached() {
-        generation++; committing = false
+        generation++; committing = false; pendingKeys.clear(); calculator.reset(); editorSession = -1L
         if (attached) { attached = false; inputBar.view.visibility = oldBar; windowManager.view.updateLayoutParams { height = oldHeight } }
     }
     override fun refreshColors() {

@@ -30,7 +30,7 @@ import kotlin.math.sin
 /** The same renderer and gesture model serve the IME and the interactive settings preview. */
 class RadialMenuView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
-    private val geometry = RadialMenuGeometry(density)
+    private val geometry = RadialMenuGeometry(density, includeLunar = Build.VERSION.SDK_INT >= 24)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var visualStyle = "rainbow"
     private var originGlow = true
@@ -46,6 +46,8 @@ class RadialMenuView(context: Context) : View(context) {
     private var velocityX = 0f
     private var velocityY = 0f
     private var startedAt = 0L
+    private var animatorScale = 1f
+    private var focusLevels = FloatArray(0)
     private var previewMode = false
     private var previewActions: List<String> = DEFAULT_SLOTS
     private var previewAction: ((String) -> Unit)? = null
@@ -84,6 +86,8 @@ class RadialMenuView(context: Context) : View(context) {
         velocityX = 0f
         velocityY = 0f
         startedAt = SystemClock.uptimeMillis()
+        animatorScale = runCatching { Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) }.getOrDefault(1f)
+        focusLevels = FloatArray(geometry.slots.size)
         visibility = if (isActive) VISIBLE else GONE
         if (!previewMode) bringToFront()
         invalidate()
@@ -253,7 +257,11 @@ class RadialMenuView(context: Context) : View(context) {
         val cx = geometry.originX
         val cy = geometry.originY
         val elapsed = (SystemClock.uptimeMillis() - startedAt).toFloat()
-        drawArc(canvas, cx, cy, elapsed, foreground, dark)
+        val opening = if (animatorScale <= 0f) 1f else (elapsed / (150f * animatorScale)).coerceIn(0f, 1f)
+        canvas.save()
+        val openingScale = .90f + .10f * (1f - (1f - opening) * (1f - opening))
+        canvas.scale(openingScale, openingScale, cx, cy)
+        drawArc(canvas, cx, cy, if (animatorScale > 0f) elapsed else 0f, foreground, dark)
         for ((index, action) in geometry.slots.withIndex()) {
             if (previewMode && action == editingAction) continue
             val angle = iconAngle(index)
@@ -261,6 +269,11 @@ class RadialMenuView(context: Context) : View(context) {
             val x = cx + radius * cos(angle).toFloat()
             val y = cy - radius * sin(angle).toFloat()
             val selected = geometry.selectedIndex == index
+            val target = if (selected) 1f else 0f
+            val response = when (motionStyle) { "soft" -> .18f; "spring" -> .30f; else -> .48f }
+            focusLevels[index] = if (animatorScale <= 0f) target else
+                (focusLevels[index] + (target - focusLevels[index]) * response).let { if (abs(it - target) < .01f) target else it }
+            val focus = focusLevels[index]
             val visibleAlpha = when (iconVisibility) {
                 "selected" -> if (selected) 255 else 0
                 "hint" -> if (selected || elapsed < 1100f) 255 else 30
@@ -271,11 +284,11 @@ class RadialMenuView(context: Context) : View(context) {
             if ((selected && focusStyle == "lens") || previewMode) {
                 paint.style = Paint.Style.FILL
                 paint.color = if (dark) Color.argb(if (selected) 210 else 130, 79, 79, 83) else Color.argb(if (selected) 235 else 150, 224, 226, 231)
-                canvas.drawCircle(x, y, (if (selected) 18f else 12f) * density, paint)
+                canvas.drawCircle(x, y, (12f + 6f * focus) * density, paint)
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = .6f * density
                 paint.color = withAlpha(foreground, if (selected) 150 else 45)
-                canvas.drawCircle(x, y, (if (selected) 18f else 12f) * density, paint)
+                canvas.drawCircle(x, y, (12f + 6f * focus) * density, paint)
             }
             if (selected && focusStyle == "spotlight") {
                 for (ring in 5 downTo 1) {
@@ -284,13 +297,20 @@ class RadialMenuView(context: Context) : View(context) {
                     canvas.drawCircle(x, y, (12f + ring * 4f) * density, paint)
                 }
             }
-            val scale = if (selected) 1.25f else 1f
+            val scale = 1f + .25f * focus
             drawIcon(canvas, action, x, y, 8f * density * scale, withAlpha(foreground, visibleAlpha))
         }
+        canvas.restore()
         drawPointer(canvas, cx, cy, foreground)
         val moving = abs(fingerX - drawnFingerX) + abs(fingerY - drawnFingerY) > .5f
-        if (isShown && (visualStyle in setOf("rainbow", "dewdrop") || moving || (iconVisibility == "hint" && elapsed < 1250f))) postInvalidateOnAnimation()
+        val focusing = focusLevels.indices.any { focusLevels[it] != if (geometry.selectedIndex == it) 1f else 0f }
+        if (isShown && animatorScale > 0f && (visualStyle in setOf("rainbow", "dewdrop") || moving || focusing || opening < 1f || (iconVisibility == "hint" && elapsed < 1250f))) postInvalidateOnAnimation()
+        else if (isShown && iconVisibility == "hint" && elapsed < 1100f) postInvalidateDelayed((1100f - elapsed).toLong())
     }
+
+    private fun pointerAngle(): Float = if (geometry.selectedIndex < 0) 90f else
+        Math.toDegrees(atan2((geometry.originY - if (followFinger && animatorScale > 0f && motionStyle != "snappy") drawnFingerY else fingerY).toDouble(),
+            ((if (followFinger && animatorScale > 0f && motionStyle != "snappy") drawnFingerX else fingerX) - geometry.originX).toDouble())).toFloat().coerceIn(12f, 168f)
 
     private fun iconAngle(index: Int): Double {
         val degrees = if (geometry.slots.size == 1) 90f else 168f - index * (156f / geometry.slots.lastIndex)
@@ -314,7 +334,7 @@ class RadialMenuView(context: Context) : View(context) {
             }
             "beads" -> drawBeads(canvas, cx, cy, radius, foreground)
             "rainbow" -> {
-                val selectedAngle = if (geometry.selectedIndex >= 0) 168f - geometry.selectedIndex * (156f / maxOf(1, geometry.slots.lastIndex)) else 90f
+                val selectedAngle = pointerAngle()
                 for (i in 0 until 104) {
                     val angle = 168f - i * 1.5f
                     val proximity = (1f - abs(angle - selectedAngle) / 52f).coerceIn(0f, 1f)
@@ -327,7 +347,7 @@ class RadialMenuView(context: Context) : View(context) {
             "dewdrop" -> {
                 canvas.drawArc(bounds, -168f, 156f, false, paint)
                 val selected = geometry.selectedIndex.takeIf { it >= 0 } ?: 2.coerceAtMost(geometry.slots.lastIndex)
-                val angle = iconAngle(selected)
+                val angle = if (geometry.selectedIndex >= 0) Math.toRadians(pointerAngle().toDouble()) else iconAngle(selected)
                 paint.style = Paint.Style.FILL
                 paint.color = withAlpha(foreground, 210)
                 canvas.drawCircle(cx + radius * cos(angle).toFloat(), cy - radius * sin(angle).toFloat(), (3.5f + .6f * sin(elapsed / 450f)) * density, paint)
@@ -358,7 +378,7 @@ class RadialMenuView(context: Context) : View(context) {
             }
         }
         if (!followFinger || !fingerX.isFinite() || !fingerY.isFinite()) return
-        when (motionStyle) {
+        when (if (animatorScale <= 0f) "snappy" else motionStyle) {
             "soft" -> { drawnFingerX += (fingerX - drawnFingerX) * .22f; drawnFingerY += (fingerY - drawnFingerY) * .22f }
             "spring" -> {
                 velocityX = (velocityX + (fingerX - drawnFingerX) * .19f) * .65f
@@ -400,14 +420,16 @@ class RadialMenuView(context: Context) : View(context) {
         paint.textAlign = Paint.Align.CENTER
         paint.textSize = 16f * unit
         paint.color = withAlpha(color, 175)
-        canvas.drawText(RadialMenuGeometry.TIME_LABELS[index], width / 2f, top + 24f * unit, paint)
-        if (index > 0) canvas.drawText("‹ " + RadialMenuGeometry.TIME_LABELS[index - 1], left + cardWidth * .2f, top - 15f * unit, paint)
-        if (index < RadialMenuGeometry.TIME_LABELS.lastIndex) canvas.drawText(RadialMenuGeometry.TIME_LABELS[index + 1] + " ›", left + cardWidth * .8f, top - 15f * unit, paint)
+        canvas.drawText(geometry.timeLabels[index], width / 2f, top + 24f * unit, paint)
+        if (index > 0) canvas.drawText("‹ " + geometry.timeLabels[index - 1], left + cardWidth * .2f, top - 15f * unit, paint)
+        if (index < geometry.timeLabels.lastIndex) canvas.drawText(geometry.timeLabels[index + 1] + " ›", left + cardWidth * .8f, top - 15f * unit, paint)
         paint.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
         paint.textSize = 32f * unit
         paint.color = color
-        val value = formatTimeAction(RadialMenuGeometry.TIME_ACTIONS[index], Date())
-        if (RadialMenuGeometry.TIME_ACTIONS[index] == "datetime") {
+        val action = geometry.timeActions[index]
+        val value = formatTimeAction(action, Date())
+        if (action.startsWith("lunar_")) paint.textSize = minOf(28f * unit, 32f * unit * (cardWidth - 24f * unit) / paint.measureText(value.substringBefore(' ')).coerceAtLeast(1f))
+        if (action == "datetime" || action == "lunar_datetime") {
             val parts = value.split(' ')
             canvas.drawText(parts[0], width / 2f, top + 61f * unit, paint)
             canvas.drawText(parts.getOrElse(1) { "" }, width / 2f, top + 99f * unit, paint)
@@ -472,6 +494,9 @@ class RadialMenuView(context: Context) : View(context) {
         val CURSOR_PLACEMENTS = setOf("finger", "above")
         val MOTION_STYLES = setOf("snappy", "soft", "spring")
         fun formatTimeAction(action: String, now: Date = Date()): String {
+            if (action == "lunar_date" || action == "lunar_datetime") {
+                return if (Build.VERSION.SDK_INT >= 24) ChineseLunarTime.format(now, action == "lunar_datetime") else ""
+            }
             val format = when (action) {
                 "chinese_date" -> "yyyy年M月d日"
                 "weekday" -> "EEEE"

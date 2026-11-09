@@ -134,7 +134,10 @@ class KeyAction(
     fun getLabel(keyboard: Keyboard): String {
         ensureLabels()
         if (states.isNotEmpty() && toggle.isNotEmpty()) {
-            return states[if (rime.run { getRuntimeOption(toggle) }) 1 else 0]
+            // ascii_mode is already mirrored by every status/option response.
+            // A label draw must not wait behind a slow native composition job.
+            val enabled = rime.run { if (toggle == "ascii_mode") statusCached.isAsciiMode else getRuntimeOption(toggle) }
+            return states[if (enabled) 1 else 0]
         }
         if (keyboard.isOnlyShiftOn) {
             val asciiMode = rime.run { statusCached }.isAsciiMode

@@ -11,8 +11,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Keep transitive libraries from adding network access to this offline build. -->
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <!-- Optional, user-enabled suggestions from newly received verification messages. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- User-initiated dictionary/model downloads; typing and audio remain local. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 
     <queries>
@@ -98,6 +100,19 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:excludeFromRecents="true"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
         <activity
+            android:name=".ime.smart.SmsCodeSettingsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+        <receiver
+            android:name=".ime.smart.SmsCodeReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+        <activity
             android:name=".ime.smart.CorrectionStyleActivity"
             android:exported="false"
             android:excludeFromRecents="true"
@@ -113,6 +128,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
         <activity android:name=".ime.smart.FeedbackTuningActivity" android:exported="false"
             android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
         <activity android:name=".ime.smart.LocalDictionaryActivity" android:exported="false"
+            android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+        <activity android:name=".ime.smart.ModelManagerActivity" android:exported="false"
             android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
 
         <!-- Settings activity -->

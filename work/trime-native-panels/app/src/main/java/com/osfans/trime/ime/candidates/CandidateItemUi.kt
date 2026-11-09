@@ -50,6 +50,7 @@ import splitties.views.horizontalPadding
 class CandidateItemUi(
     override val ctx: Context,
     private val scope: ThemeScope,
+    private val compact: Boolean = false,
 ) : Ui {
     private val theme: Theme
         get() = scope.theme
@@ -67,6 +68,7 @@ class CandidateItemUi(
     private val commentPosition = theme.style.commentPosition
     private val commentVerticalBias = theme.style.commentVerticalBias
     private val candidateTextVerticalBias = theme.style.candidateTextVerticalBias
+    private val displayPrefs = SmartInputPrefs(ctx)
 
     private val text =
         view(::AutoScaleTextView) {
@@ -157,7 +159,7 @@ class CandidateItemUi(
     override val root = view(::GestureFrame) {
         add(
             content,
-            lParams(wrapContent, dp(theme.style.candidateViewHeight)) {
+            lParams(wrapContent, dp(if (compact && theme.isIosStyle) (theme.style.candidateViewHeight - 6).coerceAtLeast(26) else theme.style.candidateViewHeight)) {
                 gravity = gravityCenter
             },
         )
@@ -168,7 +170,6 @@ class CandidateItemUi(
         item: CandidateProto,
         highlighted: Boolean,
     ) {
-        val displayPrefs = SmartInputPrefs(ctx)
         text.textSize = displayPrefs.candidateSize.takeIf { it > 0 }?.toFloat() ?: textSize
         text.typeface = Typeface.create(theme.fonts.candidate, if (displayPrefs.candidateBold) Typeface.BOLD else Typeface.NORMAL)
         val correction = CorrectionPresentation.parse(item.comment)
@@ -183,9 +184,9 @@ class CandidateItemUi(
         text.text = item.text
         text.setTextColor(tColor)
 
-        val commentText = if (correction == null) item.comment else if (correction.sentence) "整句"
+        val commentText = if (theme.isIosStyle) "" else if (correction == null) item.comment else if (correction.sentence) "整句"
             else "${correction.original} → ${correction.corrected}"
-        comment.text = if (correction != null && !correction.sentence) CorrectionStyleSpans.render(
+        comment.text = if (!theme.isIosStyle && correction != null && !correction.sentence) CorrectionStyleSpans.render(
             CorrectionStyle.plan(correction.original, correction.corrected, CorrectionStyleSpans.selected(ctx))) else commentText
         comment.setTextColor(cColor)
         comment.isVisible = commentText.isNotEmpty()

@@ -12,4 +12,5 @@ class CandidateViewHolder(
     var idx = -1
     var text = ""
     var comment = ""
+    var candidateContext: com.osfans.trime.core.CandidateContext? = null
 }

@@ -113,7 +113,7 @@ class Keyboard(
     val asciiKeyboard: String? = selfConfig?.asciiKeyboard // 英文鍵盤
 
     val keyboardHeight: Int =
-        if (theme.name.contains("视频参考") && !context.isLandscapeMode()) {
+        if (theme.isIosStyle && !context.isLandscapeMode()) {
             context.dp(com.osfans.trime.ime.smart.SmartInputPrefs(context).referenceKeyboardHeight + 36)
         } else
         resolvePositive(

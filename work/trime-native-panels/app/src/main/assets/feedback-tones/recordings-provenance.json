@@ -1,0 +1,530 @@
+{
+  "revision": "56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68",
+  "packs": [
+    {
+      "id": "mx_blue",
+      "name": "CherryMX Blue - PBT keycaps",
+      "author": "Mechvibes",
+      "source": "https://raw.githubusercontent.com/hainguyents13/mechvibes/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/cherrymx-blue-pbt",
+      "source_sha256": "68d46de5a091e4d6daf468327c87e3e75494e645dacc8d55418d5151aaf84349",
+      "license": "MIT",
+      "changes": "mono, bounded source timings, limited gain, 1.5ms edge fade",
+      "files": [
+        {
+          "file": "mx_blue-key-down.wav",
+          "timing_ms": [
+            28961.0,
+            29043.0
+          ],
+          "sha256": "2222c2542282a72a848f7cb0e3c8c4ce1019aa2047ea9228aca3695587e892ba"
+        },
+        {
+          "file": "mx_blue-key-up.wav",
+          "timing_ms": [
+            29043.0,
+            29125.0
+          ],
+          "sha256": "f6350df2bfec859b20a957cd9de25699b85d877ea2e888d549a04d5b62086b0b"
+        },
+        {
+          "file": "mx_blue-space-down.wav",
+          "timing_ms": [
+            49628.0,
+            49743.0
+          ],
+          "sha256": "2dac4fde418c177e6f5405f12ad29f26dc5993e4d821e76d9f0f66eb28f68ed5"
+        },
+        {
+          "file": "mx_blue-space-up.wav",
+          "timing_ms": [
+            49743.0,
+            49858.0
+          ],
+          "sha256": "0512b542c319582fa39d107f7e53677d306f0294f52e3fac29332149b601f83e"
+        },
+        {
+          "file": "mx_blue-delete-down.wav",
+          "timing_ms": [
+            16906.0,
+            17021.0
+          ],
+          "sha256": "1ce7d498d9f37314fe504f5514c24c1e3cfed14b651c072e6766fea0b6c642ce"
+        },
+        {
+          "file": "mx_blue-delete-up.wav",
+          "timing_ms": [
+            17021.0,
+            17136.0
+          ],
+          "sha256": "b35841761123a32eef10bd5c3b9df65992c552fd0317ec6bfc6eaa87352429e9"
+        },
+        {
+          "file": "mx_blue-enter-down.wav",
+          "timing_ms": [
+            34274.0,
+            34376.0
+          ],
+          "sha256": "e6349a6c98db5a68161dd9e4ab9780ec28add4f80433d40be335d490b9a88c3d"
+        },
+        {
+          "file": "mx_blue-enter-up.wav",
+          "timing_ms": [
+            34376.0,
+            34478.0
+          ],
+          "sha256": "ba799ca8df2b52ea295463275a630ba2f4a65857e183336272aa1da414660b34"
+        }
+      ]
+    },
+    {
+      "id": "mx_brown",
+      "name": "CherryMX Brown - PBT keycaps",
+      "author": "Mechvibes",
+      "source": "https://raw.githubusercontent.com/hainguyents13/mechvibes/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/cherrymx-brown-pbt",
+      "source_sha256": "10390a4325fe218b005c509cac28c90bdd21c16bfcc303fe57d51d2588efd047",
+      "license": "MIT",
+      "changes": "mono, bounded source timings, limited gain, 1.5ms edge fade",
+      "files": [
+        {
+          "file": "mx_brown-key-down.wav",
+          "timing_ms": [
+            22869.0,
+            22968.0
+          ],
+          "sha256": "0f7c827ffcc0568d60b77b2f0f36202d596c8e592b5f214b7186e9ef98cced6d"
+        },
+        {
+          "file": "mx_brown-key-up.wav",
+          "timing_ms": [
+            22968.0,
+            23067.0
+          ],
+          "sha256": "f699693928800251d6ed7e79658fb2ad748dc2abedd91b15621601fa2b10c8a2"
+        },
+        {
+          "file": "mx_brown-space-down.wav",
+          "timing_ms": [
+            34910.0,
+            35021.5
+          ],
+          "sha256": "80344a3c0d70b787478423501ac2b3c8bc26685f6b6971a60b72f4114bafaa76"
+        },
+        {
+          "file": "mx_brown-space-up.wav",
+          "timing_ms": [
+            35021.5,
+            35133.0
+          ],
+          "sha256": "9883f562a98d72ae5e45bd5c247cf459533c0578243f7d28bf5ead297f0807ce"
+        },
+        {
+          "file": "mx_brown-delete-down.wav",
+          "timing_ms": [
+            13765.0,
+            13857.0
+          ],
+          "sha256": "dc58d8defc7831816b596655b194015844609d7e055806e8c852a374731120d9"
+        },
+        {
+          "file": "mx_brown-delete-up.wav",
+          "timing_ms": [
+            13857.0,
+            13949.0
+          ],
+          "sha256": "b908d611b6711a0771e74b113f25899cb30bc9272d59ca9233b0fd3f57973ed9"
+        },
+        {
+          "file": "mx_brown-enter-down.wav",
+          "timing_ms": [
+            26703.0,
+            26793.5
+          ],
+          "sha256": "35416f6c73531840facc07ff9bd93982c8a85d936c95806dff8e6ee7a763fb0d"
+        },
+        {
+          "file": "mx_brown-enter-up.wav",
+          "timing_ms": [
+            26793.5,
+            26884.0
+          ],
+          "sha256": "9fdfe1c8c6b33a832193dc9120e8f7da2edf3a1a7a38e2cecffed4aa306597b0"
+        }
+      ]
+    },
+    {
+      "id": "mx_red",
+      "name": "CherryMX Red - ABS keycaps",
+      "author": "Mechvibes",
+      "source": "https://raw.githubusercontent.com/hainguyents13/mechvibes/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/cherrymx-red-abs",
+      "source_sha256": "330f91fc14f5a5232594f17058f02603ea67226fafd362fcf94e90463dbdcb40",
+      "license": "MIT",
+      "changes": "mono, bounded source timings, limited gain, 1.5ms edge fade",
+      "files": [
+        {
+          "file": "mx_red-key-down.wav",
+          "timing_ms": [
+            27942.0,
+            28017.5
+          ],
+          "sha256": "a7b5ca05365de79c97907d64193479d8fc615af25180b496715c8be880ae36f3"
+        },
+        {
+          "file": "mx_red-key-up.wav",
+          "timing_ms": [
+            28017.5,
+            28093.0
+          ],
+          "sha256": "ce16aa78623a06ba9b7aaa831a9eed15d63b5f3cd51284e9dc90346c64e4c505"
+        },
+        {
+          "file": "mx_red-space-down.wav",
+          "timing_ms": [
+            42071.0,
+            42186.0
+          ],
+          "sha256": "b34cf61ebc2b08eb455241064b28a7979fed659110a7e83c0b326d8837faa4a5"
+        },
+        {
+          "file": "mx_red-space-up.wav",
+          "timing_ms": [
+            42186.0,
+            42301.0
+          ],
+          "sha256": "a043b4ad88b7645faa9f63e9463276d0dd65f1de5bbee51fbc13bf70b844a25f"
+        },
+        {
+          "file": "mx_red-delete-down.wav",
+          "timing_ms": [
+            16727.0,
+            16840.5
+          ],
+          "sha256": "2f082b1f9b75d134447b7c04abdf716c33ab703a21ac5b3d6b08968222240854"
+        },
+        {
+          "file": "mx_red-delete-up.wav",
+          "timing_ms": [
+            16840.5,
+            16954.0
+          ],
+          "sha256": "50a8d04c3e7e826dfb0b016b41af36276af005aa3b1fa02702eee1e68e3be1a6"
+        },
+        {
+          "file": "mx_red-enter-down.wav",
+          "timing_ms": [
+            32833.0,
+            32928.0
+          ],
+          "sha256": "84ea1dceae333413f7398513d8ae6ea5119ac974b59962b7d1e98e65c30a9a68"
+        },
+        {
+          "file": "mx_red-enter-up.wav",
+          "timing_ms": [
+            32928.0,
+            33023.0
+          ],
+          "sha256": "5a5b52fb8442038f7a1fa2dc2d6e611b96013e67fb4185a000d1e53c9d59ea61"
+        }
+      ]
+    },
+    {
+      "id": "mx_black",
+      "name": "CherryMX Black - PBT keycaps",
+      "author": "Mechvibes",
+      "source": "https://raw.githubusercontent.com/hainguyents13/mechvibes/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/cherrymx-black-pbt",
+      "source_sha256": "29f3ce7f6b700db7076831ceb2ef8b616652538195690707763563b4a8805b37",
+      "license": "MIT",
+      "changes": "mono, bounded source timings, limited gain, 1.5ms edge fade",
+      "files": [
+        {
+          "file": "mx_black-key-down.wav",
+          "timing_ms": [
+            22850.0,
+            22930.0
+          ],
+          "sha256": "114d31d802201b9ea5d22594236861716de12b5f567b429ca95e95bec4f98531"
+        },
+        {
+          "file": "mx_black-key-up.wav",
+          "timing_ms": [
+            22930.0,
+            23010.0
+          ],
+          "sha256": "307ae5584badfcfcd86dc51e8b7affaa2d73c19d21793eae849a69c9a329c040"
+        },
+        {
+          "file": "mx_black-space-down.wav",
+          "timing_ms": [
+            34906.0,
+            34990.0
+          ],
+          "sha256": "ab0ef6a325f3a9f6df5e73f6bdd90fa944ae9f872eff6395751ac2ef7d68c41b"
+        },
+        {
+          "file": "mx_black-space-up.wav",
+          "timing_ms": [
+            34990.0,
+            35074.0
+          ],
+          "sha256": "078c4dded414967ece1381bed5fbc306feae401a7faef861776ac29d808db542"
+        },
+        {
+          "file": "mx_black-delete-down.wav",
+          "timing_ms": [
+            14035.0,
+            14103.5
+          ],
+          "sha256": "e4ddd32f51d187fd0edf70d8330d2af1d57119fc39b9c3ed440ebab590ba0a43"
+        },
+        {
+          "file": "mx_black-delete-up.wav",
+          "timing_ms": [
+            14103.5,
+            14172.0
+          ],
+          "sha256": "41c027c2b9bd872d3b982f43ec8344bdfbca6b295d26ef791288d21a51bace7e"
+        },
+        {
+          "file": "mx_black-enter-down.wav",
+          "timing_ms": [
+            27154.0,
+            27239.5
+          ],
+          "sha256": "09130272f6d6c7f582769c72d20c6dcaf7f7e6cc11633e9b9274eb8dc19362e1"
+        },
+        {
+          "file": "mx_black-enter-up.wav",
+          "timing_ms": [
+            27239.5,
+            27325.0
+          ],
+          "sha256": "7f567f278d555607accca3241b6ccfd3fae2a7070af2196b869ff3ed47059e6f"
+        }
+      ]
+    },
+    {
+      "id": "topre",
+      "name": "Topre Purple Hybrid - PBT keycaps",
+      "author": "Mechvibes",
+      "source": "https://raw.githubusercontent.com/hainguyents13/mechvibes/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/topre-purple-hybrid-pbt",
+      "source_sha256": "af073650844bced0050df018bf872b16307a1143c8f356be5ea75340e6dc0298",
+      "license": "MIT",
+      "changes": "mono, bounded source timings, limited gain, 1.5ms edge fade",
+      "files": [
+        {
+          "file": "topre-key-down.wav",
+          "timing_ms": [
+            56440.0,
+            56528.5
+          ],
+          "sha256": "4b6e139831d4904fc44ce83cfe59aaab16abd1c866fc7a8cd1ad1c496d871250"
+        },
+        {
+          "file": "topre-key-up.wav",
+          "timing_ms": [
+            56528.5,
+            56617.0
+          ],
+          "sha256": "6ea7a1990035aa04a7e190dbca2b786f8be1fcfffe75f7f3f64bd8827b4bc68b"
+        },
+        {
+          "file": "topre-space-down.wav",
+          "timing_ms": [
+            87213.0,
+            87303.5
+          ],
+          "sha256": "f3a147bc9c82c9c0d7dfbd8c7ce750dae80d9d21eb6779b40ab2cfbd9176adc4"
+        },
+        {
+          "file": "topre-space-up.wav",
+          "timing_ms": [
+            87303.5,
+            87394.0
+          ],
+          "sha256": "f8e4e9b0a4174c86d39bee0f63fa0887cf56072d443b23b8e7f661ee043957c0"
+        },
+        {
+          "file": "topre-delete-down.wav",
+          "timing_ms": [
+            33746.0,
+            33841.0
+          ],
+          "sha256": "65f2ea87caf44cc46986ff946b3372f7a95752b0c145e2ba779bc174afa18a66"
+        },
+        {
+          "file": "topre-delete-up.wav",
+          "timing_ms": [
+            33841.0,
+            33936.0
+          ],
+          "sha256": "84a5fa8f42a589586de5b59b6b67ce39ba395e7ca061d8e01e8c1c690c5b3d84"
+        },
+        {
+          "file": "topre-enter-down.wav",
+          "timing_ms": [
+            68501.0,
+            68588.0
+          ],
+          "sha256": "5dd8281838acecebcf52bd29a89a60e1c68b2d82bfaac7a61986840ba31e707c"
+        },
+        {
+          "file": "topre-enter-up.wav",
+          "timing_ms": [
+            68588.0,
+            68675.0
+          ],
+          "sha256": "48bf972226f5eb32970660180864ecdbb5df9948b858f9aac850c38d473a4012"
+        }
+      ]
+    },
+    {
+      "id": "oreo",
+      "name": "EG Oreo",
+      "author": "Mechvibes",
+      "source": "https://raw.githubusercontent.com/hainguyents13/mechvibes/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/eg-oreo",
+      "source_sha256": "6e40d3e8acaf32b0b19b777fb628c0f563a7d29dc4b6b652c1dadff31c828a98",
+      "license": "MIT",
+      "changes": "mono, bounded source timings, limited gain, 1.5ms edge fade",
+      "files": [
+        {
+          "file": "oreo-key-down.wav",
+          "timing_ms": [
+            11171.0,
+            11225.5
+          ],
+          "sha256": "21d538bcae2f158b7ce5e221358238cbee83b8c3352a3a5035a087e31ad83e8a"
+        },
+        {
+          "file": "oreo-key-up.wav",
+          "timing_ms": [
+            11225.5,
+            11280.0
+          ],
+          "sha256": "75963d5ab3b7c0c552308b70e39ea4a0096006affdd5b4befa90b13773d1cec1"
+        },
+        {
+          "file": "oreo-space-down.wav",
+          "timing_ms": [
+            24626.0,
+            24697.5
+          ],
+          "sha256": "8161ae69ba46851ee4c899ce51c58e4457cc87f88e10ab7a49394b6ce2163853"
+        },
+        {
+          "file": "oreo-space-up.wav",
+          "timing_ms": [
+            24697.5,
+            24769.0
+          ],
+          "sha256": "9c46555db08d8c36b9b2269fbf9441019dd58c2341bfdd4c060e22f68077529e"
+        },
+        {
+          "file": "oreo-delete-down.wav",
+          "timing_ms": [
+            4991.0,
+            5056.5
+          ],
+          "sha256": "3452bfb5108a59499cab9b025bf2662ee218345655c90456045b513b9d00a947"
+        },
+        {
+          "file": "oreo-delete-up.wav",
+          "timing_ms": [
+            5056.5,
+            5122.0
+          ],
+          "sha256": "c27dd87c6944a65e8a4c41dc6a391bcceab0ff8fb549fcb23f09ee8056a5bae0"
+        },
+        {
+          "file": "oreo-enter-down.wav",
+          "timing_ms": [
+            14603.0,
+            14661.0
+          ],
+          "sha256": "ec7b72d5b7565e3be2196202680f5082d2da091895e28074ef9d83ddd1a34e81"
+        },
+        {
+          "file": "oreo-enter-up.wav",
+          "timing_ms": [
+            14661.0,
+            14719.0
+          ],
+          "sha256": "ba20d7fc262ba4672ed2a37595a8eeb5ad2b04898091de01404d08e50d2cdc1d"
+        }
+      ]
+    },
+    {
+      "id": "crystal",
+      "name": "EG Crystal Purple",
+      "author": "Mechvibes",
+      "source": "https://raw.githubusercontent.com/hainguyents13/mechvibes/56d7135bcdf6ceb7fe2f4e06f8ca0903277a9e68/soundpacks/keyboard/eg-crystal-purple",
+      "source_sha256": "8f5da33383bcbc610fb510e04571c65d07ef6bd214d82fbc39738ee1810b5d84",
+      "license": "MIT",
+      "changes": "mono, bounded source timings, limited gain, 1.5ms edge fade",
+      "files": [
+        {
+          "file": "crystal-key-down.wav",
+          "timing_ms": [
+            12061.0,
+            12125.5
+          ],
+          "sha256": "fc58c718be9f7d57431fe16c208cf916f2822b784bb822dd2a471ccfb76cc61a"
+        },
+        {
+          "file": "crystal-key-up.wav",
+          "timing_ms": [
+            12125.5,
+            12190.0
+          ],
+          "sha256": "6dc88cd4e99a2839d452259583097a3e5b2aace3c802d1393ca48501d2611176"
+        },
+        {
+          "file": "crystal-space-down.wav",
+          "timing_ms": [
+            22501.0,
+            22583.0
+          ],
+          "sha256": "397d8e4ea666855ab4b73d72dc196c94a8043f5b5d206faf4c6b874f363d4e60"
+        },
+        {
+          "file": "crystal-space-up.wav",
+          "timing_ms": [
+            22583.0,
+            22665.0
+          ],
+          "sha256": "3fd9ed308dea1befb904dd99c23f33c8ef53f006475c85af3b08056ca9b18129"
+        },
+        {
+          "file": "crystal-delete-down.wav",
+          "timing_ms": [
+            5566.0,
+            5637.5
+          ],
+          "sha256": "5f3f7981d730508daf323ca55a38e735c57a98174f24e70f2907603ebc0f5ca2"
+        },
+        {
+          "file": "crystal-delete-up.wav",
+          "timing_ms": [
+            5637.5,
+            5709.0
+          ],
+          "sha256": "18f1e2c3a50759f09ff7710e4087481d054b2fc19b3b37251694430fccc8eccb"
+        },
+        {
+          "file": "crystal-enter-down.wav",
+          "timing_ms": [
+            15361.0,
+            15426.0
+          ],
+          "sha256": "1d0a0d60a0c6b9302fcaa54a0c63ddddb0636744e66cb556a73a0046296278fc"
+        },
+        {
+          "file": "crystal-enter-up.wav",
+          "timing_ms": [
+            15426.0,
+            15491.0
+          ],
+          "sha256": "a2d5d61d0d3b6eeb0c8c4db8ccfec278ae6907a897d6398092a3d235f0c9a7c5"
+        }
+      ]
+    }
+  ]
+}

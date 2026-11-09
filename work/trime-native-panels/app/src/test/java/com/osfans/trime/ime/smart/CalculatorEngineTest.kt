@@ -39,4 +39,12 @@ class CalculatorEngineTest : FunSpec({
         shouldThrow<IllegalArgumentException> { CalculatorEngine.evaluate("(".repeat(34) + "1" + ")".repeat(34)) }
         shouldThrow<IllegalArgumentException> { CalculatorEngine.evaluate("-".repeat(34) + "1") }
     }
+    test("exact and rounded results use distinct relations") {
+        CalculatorEngine.calculate("1+2").preview() shouldBe "=3"
+        CalculatorEngine.calculate("√4").preview() shouldBe "=2"
+        CalculatorEngine.calculate("√12").preview() shouldBe "≈3.46410162"
+        CalculatorEngine.calculate("1÷3").preview() shouldBe "≈0.33333333"
+        CalculatorEngine.calculate("1÷8").preview() shouldBe "=0.125"
+        CalculatorEngine.calculate("9999999999999999+2").value shouldBe "10000000000000001"
+    }
 })

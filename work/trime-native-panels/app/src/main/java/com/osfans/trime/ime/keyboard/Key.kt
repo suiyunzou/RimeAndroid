@@ -271,18 +271,23 @@ class Key(
     fun getAction(behavior: KeyBehavior): KeyAction? = keyActions[behavior]?.takeIf { behavior != KeyBehavior.CLICK } ?: checkKeyAction(sendBindings) ?: click
 
     private fun checkKeyAction(): KeyAction? {
-        val rime = rime
-        val asciiMode = rime.run { statusCached }.isAsciiMode
-        val paging = rime.run { paging }
-        val hasMenu = rime.run { hasMenu }
-        val composing = rime.run { statusCached }.isComposing
-        return keyActions[KeyBehavior.ASCII].takeIf { asciiMode }
-            ?: keyActions[KeyBehavior.PAGING]?.takeIf { paging }
-            ?: keyActions[KeyBehavior.HAS_MENU]?.takeIf { hasMenu }
-            ?: keyActions[KeyBehavior.COMPOSING]?.takeIf { composing }
+        val asciiAction = keyActions[KeyBehavior.ASCII]
+        val pagingAction = keyActions[KeyBehavior.PAGING]
+        val menuAction = keyActions[KeyBehavior.HAS_MENU]
+        val composingAction = keyActions[KeyBehavior.COMPOSING]
+        // Most letter keys have no state bindings. Rendering and pointer MOVE
+        // must not create four blocking coroutine scopes just to return null.
+        if (asciiAction == null && pagingAction == null && menuAction == null && composingAction == null) return null
+        return rime.run {
+            val status = statusCached
+            asciiAction?.takeIf { status.isAsciiMode }
+                ?: pagingAction?.takeIf { paging }
+                ?: menuAction?.takeIf { hasMenu }
+                ?: composingAction?.takeIf { status.isComposing }
+        }
     }
 
-    private fun checkKeyAction(sendBindings: Boolean): KeyAction? = checkKeyAction().takeIf { sendBindings }
+    private fun checkKeyAction(sendBindings: Boolean): KeyAction? = if (sendBindings) checkKeyAction() else null
 
     val code: Int
         get() = click?.code ?: KeyEvent.KEYCODE_UNKNOWN

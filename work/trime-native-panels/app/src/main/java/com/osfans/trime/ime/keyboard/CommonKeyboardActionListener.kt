@@ -191,10 +191,10 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
 
             override fun onSmartAction(action: String) {
                 when {
-                    action.startsWith("flick_symbol:") || action.startsWith("locked_symbol:") -> {
+                    action.startsWith("flick_symbol:") || action.startsWith("lock_flick_symbol:") || action.startsWith("locked_symbol:") -> {
                         val text = action.substringAfter(':')
                         if (tryEmailCandidates(text)) return
-                        if (action.startsWith("flick_symbol:")) keyboardWindow.setFlickSymbolsLocked(true)
+                        if (action.startsWith("lock_flick_symbol:")) keyboardWindow.setFlickSymbolsLocked(true)
                         val keyboard = KeyboardWindow.currentKeyboard
                         val revision = keyboard.flickSymbolsRevision
                         service.commitPanelText(text, isActive = { true }, pairPunctuation = true) { committed ->
@@ -212,7 +212,7 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                         "emoji_variants", "emoji_expand" -> windowManager.attachWindow(ReferenceEmojiWindow(di, true))
                         "emoji" -> windowManager.attachWindow(ReferenceEmojiWindow(di))
                         "clipboard" -> handleClipboardWindow("smart")
-                        "date", "time", "chinese_date", "weekday", "datetime" -> smartCommit(com.osfans.trime.ime.smart.RadialMenuView.formatTimeAction(action))
+                        "date", "time", "chinese_date", "weekday", "datetime", "lunar_date", "lunar_datetime" -> smartCommit(com.osfans.trime.ime.smart.RadialMenuView.formatTimeAction(action))
                         "traditional" -> service.postRimeJob { SmartLanguageOptions.toggleTraditional(this) }
                         "toggle_language" -> toggleLanguage()
                         "english" -> service.postRimeJob {
@@ -286,7 +286,7 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
             private fun handleLanguageSwitch(action: KeyAction) {
                 // Existing installed reference themes already bind the globe to
                 // LANGUAGE_SWITCH. Keep that keycode for its icon/footer geometry.
-                if (theme.name.contains("视频参考") && action.select.isEmpty()) {
+                if (theme.isIosStyle && action.select.isEmpty()) {
                     toggleLanguage()
                     return
                 }
@@ -322,13 +322,13 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
             }
 
             private fun handleLiquidKeyboard(arg: String) {
-                if (keyboardWindow.allowSmartInput && theme.name.contains("视频参考") && arg in setOf("emoji", "表情")) {
+                if (keyboardWindow.allowSmartInput && theme.isIosStyle && arg in setOf("emoji", "表情")) {
                     windowManager.attachWindow(ReferenceEmojiWindow(di))
                     return
                 }
                 // for compatibility
                 if (arg == "剪贴" || arg == "clipboard") {
-                    if (keyboardWindow.allowSmartInput && theme.name.contains("视频参考")) handleClipboardWindow("smart")
+                    if (keyboardWindow.allowSmartInput && theme.isIosStyle) handleClipboardWindow("smart")
                     else windowManager.attachWindow(ClipboardWindow(di))
                     return
                 }

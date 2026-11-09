@@ -5,8 +5,10 @@ import kotlin.math.atan2
 import kotlin.math.hypot
 
 /** Actions are ordered visually from left to right. Coordinates are local pixels. */
-class RadialMenuGeometry(private val density: Float) {
+class RadialMenuGeometry(private val density: Float, includeLunar: Boolean = true) {
     init { require(density > 0f && density.isFinite()) }
+    val timeActions = if (includeLunar) TIME_ACTIONS else TIME_ACTIONS.take(5)
+    val timeLabels = TIME_LABELS.take(timeActions.size)
     var isActive = false
         private set
     var originX = 0f
@@ -65,10 +67,10 @@ class RadialMenuGeometry(private val density: Float) {
             val steps = ((x - timeSlideX) / (TIME_FORMAT_STEP_DP * density)).toInt()
             if (steps != 0) {
                 timeSlideX += steps * TIME_FORMAT_STEP_DP * density
-                val next = (timeFormatIndex + steps).coerceIn(TIME_ACTIONS.indices)
+                val next = (timeFormatIndex + steps).coerceIn(timeActions.indices)
                 if (next == timeFormatIndex) return false
                 timeFormatIndex = next
-                selectedAction = TIME_ACTIONS[timeFormatIndex]
+                selectedAction = timeActions[timeFormatIndex]
                 return true
             }
             return false
@@ -81,7 +83,7 @@ class RadialMenuGeometry(private val density: Float) {
             timeArmed = true
             timeSlideX = x
             timeFormatIndex = 0
-            selectedAction = TIME_ACTIONS[0]
+            selectedAction = timeActions[0]
             return true
         }
         val next = hitTest(x, y)
@@ -110,7 +112,8 @@ class RadialMenuGeometry(private val density: Float) {
     }
 
     companion object {
-        const val INNER_RADIUS_DP = 36f
+        // Direction selection is independent of the 112 dp icon radius.
+        const val INNER_RADIUS_DP = 10f
         const val OUTER_RADIUS_DP = 120f
         const val MAX_SLOTS = 6
         const val SUBGESTURE_DISTANCE_DP = 12f
@@ -118,8 +121,8 @@ class RadialMenuGeometry(private val density: Float) {
         const val TIME_CANCEL_DISTANCE_DP = 24f
         val DEFAULT_SLOTS = listOf("time", "traditional", "symbols", "clipboard", "settings")
         val SUPPORTED_ACTIONS = DEFAULT_SLOTS.toSet() + setOf("calculator", "quotes")
-        val TIME_ACTIONS = listOf("chinese_date", "time", "weekday", "datetime", "date")
-        val TIME_LABELS = listOf("中文日期", "时间", "星期", "日期时间", "日期")
+        val TIME_ACTIONS = listOf("chinese_date", "time", "weekday", "datetime", "date", "lunar_date", "lunar_datetime")
+        val TIME_LABELS = listOf("中文日期", "时间", "星期", "日期时间", "日期", "农历日期", "农历时辰")
     }
 }
 

@@ -19,6 +19,7 @@ class SmartKeyboardPointerDispatcher(
         var pointerId = -1
         var downTime = 0L
         var key: KeyView? = null
+        var keyIndex = -1
         var smart = false
         var x = 0f
         var y = 0f
@@ -34,7 +35,13 @@ class SmartKeyboardPointerDispatcher(
             MotionEvent.ACTION_POINTER_DOWN -> {
                 streams.filter { it.pointerId >= 0 && it.smart }.forEach { stream ->
                     val index = event.findPointerIndex(stream.pointerId)
-                    if (index >= 0) stream.controller.settleOverlappingLetterTap(event.getX(index), event.getY(index))
+                    if (index >= 0) {
+                        // POINTER_DOWN can carry movement since the last MOVE.
+                        // Replay it before deciding whether the older finger is
+                        // a stationary tap, flick, cursor gesture, or glide.
+                        deliver(stream, event, index, MotionEvent.ACTION_MOVE, settlingOverlap = true)
+                        stream.controller.settleOverlappingTap(event.getX(index), event.getY(index))
+                    }
                 }
                 begin(event, event.actionIndex)
             }
@@ -63,11 +70,12 @@ class SmartKeyboardPointerDispatcher(
         val x = event.getX(pointerIndex)
         val y = event.getY(pointerIndex)
         val keyIndex = keys.indexOfFirst { x >= it.x - it.extraWidthLeft && x < it.x + it.width + it.extraWidthRight && y >= it.y && y < it.y + it.height }
+        stream.keyIndex = keyIndex
         stream.key = host.getChildAt(keyIndex) as? KeyView
         deliver(stream, event, pointerIndex, MotionEvent.ACTION_DOWN)
     }
 
-    private fun deliver(stream: Stream, event: MotionEvent, index: Int, action: Int) {
+    private fun deliver(stream: Stream, event: MotionEvent, index: Int, action: Int, settlingOverlap: Boolean = false) {
         stream.x = event.getX(index)
         stream.y = event.getY(index)
         val single = if (action == MotionEvent.ACTION_MOVE && event.historySize > 0) {
@@ -81,8 +89,8 @@ class SmartKeyboardPointerDispatcher(
             }
         } else MotionEvent.obtain(stream.downTime, event.eventTime, action, stream.x, stream.y, event.metaState)
         try {
-            if (action == MotionEvent.ACTION_DOWN) stream.smart = stream.controller.dispatch(single)
-            else if (stream.smart) stream.controller.dispatch(single)
+            if (action == MotionEvent.ACTION_DOWN) stream.smart = stream.controller.dispatch(single, stream.keyIndex)
+            else if (stream.smart) stream.controller.dispatch(single, settlingOverlap = settlingOverlap)
             if (!stream.smart) stream.key?.let { key ->
                 single.offsetLocation(-key.x, -key.y)
                 key.dispatchTouchEvent(single)

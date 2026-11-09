@@ -25,6 +25,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import splitties.systemservices.notificationManager
 import timber.log.Timber
 import java.util.concurrent.locks.ReentrantLock
@@ -113,6 +119,58 @@ object RimeDaemon {
     fun getFirstSessionOrNull() = sessions.firstNotNullOfOrNull { it.value }
 
     private var restartId = 0
+    private val modelRestartMutex = Mutex()
+    private val modelReloading = MutableStateFlow(false)
+    val isModelReloading = modelReloading.asStateFlow()
+
+    /** Must run in the caller's scope: Rime's lifecycle scope is cancelled by finalize(). */
+    suspend fun restartRimeAndAwaitReady() = modelRestartMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val sessionName = "model-reload-ready-barrier"
+            modelReloading.value = true
+            try {
+                createSession(sessionName)
+                withTimeout(60_000L) {
+                    // Native startup begins asynchronous maintenance before ON_READY. During
+                    // maintenance create_session returns 0 and current schema is empty.
+                    // Wait for a real native session; lifecycle READY alone is insufficient.
+                    suspend fun awaitNativeSchema(): String {
+                        while (true) {
+                            val schema = rimeImpl.selectedSchemaId()
+                            if (schema.isNotBlank() && !schema.startsWith('.')) return schema
+                            delay(50)
+                        }
+                    }
+                    realRime.lifecycle.whenReady { }
+                    val previousSchema = awaitNativeSchema()
+                    val languageOptions = listOf("ascii_mode", "simplification", "traditionalization")
+                        .associateWith { rimeImpl.getRuntimeOption(it) }
+                    lock.withLock {
+                        realRime.finalize()
+                        check(realRime.startup()) { "输入引擎无法启动，请重新打开输入法" }
+                    }
+                    realRime.lifecycle.whenReady { }
+                    val initialSchema = awaitNativeSchema()
+                    if (initialSchema != previousSchema) {
+                        check(rimeImpl.selectSchema(previousSchema)) { "无法恢复输入方案 $previousSchema" }
+                    }
+                    val loadedSchema = rimeImpl.currentSchema().schemaId
+                    check(loadedSchema == previousSchema) {
+                        "输入方案尚未恢复（期望 $previousSchema，实际 $loadedSchema）"
+                    }
+                    languageOptions.forEach { (option, value) -> rimeImpl.setRuntimeOption(option, value) }
+                    languageOptions.forEach { (option, value) ->
+                        check(rimeImpl.getRuntimeOption(option) == value) { "语言状态尚未恢复" }
+                    }
+                    // Refresh cached status/menu only after the original language mode is restored.
+                    rimeImpl.clearComposition()
+                }
+            } finally {
+                destroySession(sessionName)
+                modelReloading.value = false
+            }
+        }
+    }
 
     init {
         DeployNotification.ensureChannel()

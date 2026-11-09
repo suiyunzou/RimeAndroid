@@ -39,6 +39,7 @@ class AlwaysUi(
         Toolbar,
         Clipboard,
         InlineSuggestion,
+        SmsCode,
     }
 
     var currentState = State.Toolbar
@@ -69,6 +70,7 @@ class AlwaysUi(
     val clipboardUi = ClipboardSuggestionUi(ctx, scope)
 
     val inlineSuggestionsUi = InlineSuggestionsUi(ctx)
+    val smsCodeUi = SmsCodeSuggestionUi(ctx, scope)
 
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, scope)
     private val rightMostButton =
@@ -87,6 +89,7 @@ class AlwaysUi(
             add(buttonsUi.root, lParams(matchParent, matchParent))
             add(clipboardUi.root, lParams(matchParent, matchParent))
             add(inlineSuggestionsUi.root, lParams(matchParent, matchParent))
+            add(smsCodeUi.root, lParams(matchParent, matchParent))
         }
 
     override val root: ConstraintLayout = constraintLayout {
@@ -146,6 +149,7 @@ class AlwaysUi(
         hideKeyboardButton.refreshColors()
         buttonsUi.refreshColors()
         clipboardUi.refreshColors()
+        smsCodeUi.refreshColors()
     }
 
     private fun updateRightMostButton(state: State) {

@@ -48,4 +48,19 @@ class GlideDecoderTest : FunSpec({
         gesture.begin(10f, 10f); gesture.move(70f, 10f); gesture.cancel()
         gesture.finish(80f, 10f).kind shouldBe GlideGestureSession.Kind.CANCEL
     }
+    test("overlapping-pointer peek preserves stationary owner and rejects folded motion") {
+        val gesture = GlideGestureSession(1f)
+        gesture.isStationaryTap shouldBe false
+        gesture.begin(0f, 0f)
+        gesture.isStationaryTap shouldBe true
+        gesture.isStationaryTap shouldBe true
+        gesture.finish(0f, 0f).kind shouldBe GlideGestureSession.Kind.TAP
+        gesture.isStationaryTap shouldBe false
+        gesture.begin(0f, 0f); gesture.move(6f, 0f); gesture.move(0f, 0f)
+        gesture.isStationaryTap shouldBe false
+        gesture.finish(0f, 0f).kind shouldBe GlideGestureSession.Kind.CANCEL
+        gesture.begin(0f, 0f); gesture.move(30f, 0f)
+        gesture.isStationaryTap shouldBe false
+        gesture.finish(30f, 0f).kind shouldBe GlideGestureSession.Kind.GLIDE
+    }
 })

@@ -104,6 +104,8 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
                     rime,
                     total = compactCandidate.adapter.total,
                     offset = adapter.offset,
+                    precedingTexts = compactCandidate.precedingTexts(adapter.offset),
+                    expected = compactCandidate.candidateContext,
                 )
             },
         )
@@ -139,10 +141,12 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
     fun bindCandidateUiViewHolder(holder: CandidateViewHolder) {
         holder.itemView.run {
             setOnClickListener { _ ->
-                rime.launchOnReady { it.selectCandidate(holder.idx, global = true) }
+                val index = holder.idx
+                val expected = holder.candidateContext ?: return@setOnClickListener
+                rime.launchOnReady { it.selectCandidateIfCurrent(index, expected) }
             }
             setOnLongClickListener { view ->
-                inputView.showCandidateActionMenu(holder.idx, holder.text, view, global = true)
+                inputView.showCandidateActionMenu(holder.idx, holder.text, view, global = true, comment = holder.comment, expected = holder.candidateContext)
                 true
             }
         }

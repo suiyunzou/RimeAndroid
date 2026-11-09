@@ -4,7 +4,6 @@ package com.osfans.trime.ime.smart
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
-import kotlin.math.sqrt
 
 /** Bounded arithmetic only. Percent means divide the preceding operand by 100. */
 object CalculatorEngine {
@@ -12,7 +11,17 @@ object CalculatorEngine {
     const val MAX_DEPTH = 32
     private val precision = MathContext(16, RoundingMode.HALF_UP)
 
-    fun evaluate(expression: String): String {
+    data class Result(val value: String, val approximate: Boolean) {
+        val relation: String get() = if (approximate) "≈" else "="
+        fun preview(): String {
+            val rounded = value.toBigDecimal().setScale(8, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+            val prefix = if (approximate || rounded.toBigDecimal().compareTo(value.toBigDecimal()) != 0) "≈" else "="
+            return prefix + rounded
+        }
+    }
+    fun evaluate(expression: String): String = calculate(expression).value
+
+    fun calculate(expression: String): Result {
         require(expression.isNotBlank()) { "请输入算式" }
         require(expression.length <= MAX_LENGTH) { "算式过长" }
         return try {
@@ -22,13 +31,15 @@ object CalculatorEngine {
             val normalized = if (result.signum() == 0) BigDecimal.ZERO else result.stripTrailingZeros()
             val text = normalized.toPlainString()
             require(text.length <= 512) { "结果过长" }
-            text
+            Result(text, parser.approximate)
         } catch (error: ArithmeticException) {
             throw IllegalArgumentException("无法计算此算式", error)
         }
     }
 
     private class Parser(private val text: String) {
+        var approximate = false
+            private set
         private var position = 0
         private fun skip() { while (position < text.length && text[position].isWhitespace()) position++ }
         private fun take(vararg chars: Char): Boolean {
@@ -43,8 +54,8 @@ object CalculatorEngine {
             var value = product(depth)
             while (true) {
                 value = when {
-                    take('+') -> value.add(product(depth), precision)
-                    take('-', '−') -> value.subtract(product(depth), precision)
+                    take('+') -> value.add(product(depth))
+                    take('-', '−') -> value.subtract(product(depth))
                     else -> return value
                 }
             }
@@ -53,11 +64,14 @@ object CalculatorEngine {
             var value = unary(depth)
             while (true) {
                 value = when {
-                    take('*', '×') -> value.multiply(unary(depth), precision)
+                    take('*', '×') -> value.multiply(unary(depth))
                     take('/', '÷') -> {
                         val divisor = unary(depth)
                         require(divisor.signum() != 0) { "不能除以零" }
-                        value.divide(divisor, precision)
+                        try { value.divide(divisor) } catch (_: ArithmeticException) {
+                            approximate = true
+                            value.divide(divisor, precision)
+                        }
                     }
                     else -> return value
                 }
@@ -70,14 +84,20 @@ object CalculatorEngine {
             if (take('√')) {
                 val value = unary(depth + 1)
                 require(value.signum() >= 0) { "负数不能开平方" }
-                return BigDecimal.valueOf(sqrt(value.toDouble())).round(precision)
+                if (value.signum() == 0) return BigDecimal.ZERO
+                val work = MathContext(24, RoundingMode.HALF_UP)
+                var root = BigDecimal.ONE.scaleByPowerOfTen((value.precision() - value.scale() + 1) / 2)
+                repeat(80) { root = root.add(value.divide(root, work)).divide(BigDecimal(2), work) }
+                root = root.round(precision).stripTrailingZeros()
+                if (root.multiply(root).compareTo(value) != 0) approximate = true
+                return root
             }
             var value = if (take('(', '（')) {
                 val result = expression(depth + 1)
                 require(take(')', '）')) { "缺少右括号" }
                 result
             } else number()
-            while (take('%', '％')) value = value.divide(BigDecimal(100), precision)
+            while (take('%', '％')) value = value.divide(BigDecimal(100))
             return value
         }
         private fun number(): BigDecimal {
@@ -91,7 +111,7 @@ object CalculatorEngine {
                 position++
             }
             require(digits > 0 && dots <= 1) { "请输入有效数字" }
-            return text.substring(start, position).toBigDecimal(precision)
+            return text.substring(start, position).toBigDecimal()
         }
     }
 }

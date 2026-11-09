@@ -6,11 +6,16 @@
 package com.osfans.trime.ime.bar
 
 import android.os.Build
+import android.app.KeyguardManager
+import android.content.Context
+import android.text.InputType
 import android.util.Size
 import android.view.ContextThemeWrapper
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InlineSuggestion
 import android.view.inputmethod.InlineSuggestionsResponse
 import android.widget.ViewAnimator
@@ -39,6 +44,8 @@ import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyBehavior
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.switches.SwitchOptionWindow
+import com.osfans.trime.ime.smart.SmsCodeEntry
+import com.osfans.trime.ime.smart.SmsCodeInbox
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.ime.window.BoardWindowManager
 import com.osfans.trime.ui.main.ClipEditActivity
@@ -71,7 +78,9 @@ class InputBarDelegate(override val di: DI) :
     private val candidate: CompactCandidateDelegate by instance()
     private val rime: RimeSession by instance()
 
-    val themedHeight = theme.style.run { candidateViewHeight + commentHeight }
+    val themedHeight = theme.style.run {
+        if (theme.isIosStyle) (candidateViewHeight - 6).coerceAtLeast(26) else candidateViewHeight + commentHeight
+    }
 
     private val prefs = AppPrefs.defaultInstance()
 
@@ -85,6 +94,11 @@ class InputBarDelegate(override val di: DI) :
 
     private var isClipboardFresh: Boolean = false
     private var isInlineSuggestionPresent: Boolean = false
+    private var smsObservationJob: Job? = null
+    private var shownSmsCode: SmsCodeEntry? = null
+    private data class SmsFillTouch(val entry: SmsCodeEntry, val editor: EditorInfo, val connection: InputConnection)
+    private var smsFillTouch: SmsFillTouch? = null
+    private var smsTouchAttempted = false
     private var glideStrip: com.osfans.trime.ime.smart.GlideCandidateStrip? = null
     private var glideVisible = false
     private var beforeGlideVisibility = View.VISIBLE
@@ -145,8 +159,12 @@ class InputBarDelegate(override val di: DI) :
     }
 
     private fun evalAlwaysUiState() {
+        shownSmsCode = SmsCodeInbox.current()?.takeIf { canShowSmsCode() }
+        if (smsFillTouch?.entry != shownSmsCode) smsFillTouch = null
+        alwaysUi.smsCodeUi.show(shownSmsCode?.code)
         val newState =
             when {
+                shownSmsCode != null -> AlwaysUi.State.SmsCode
                 isClipboardFresh -> AlwaysUi.State.Clipboard
                 isInlineSuggestionPresent -> AlwaysUi.State.InlineSuggestion
                 else -> AlwaysUi.State.Toolbar
@@ -154,6 +172,32 @@ class InputBarDelegate(override val di: DI) :
         if (newState == alwaysUi.currentState) return
         alwaysUi.updateState(newState)
     }
+
+    private fun canShowSmsCode(): Boolean {
+        if (!SmsCodeInbox.isAvailable(context)) return false
+        if ((context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager)?.isKeyguardLocked == true) return false
+        val info = service.currentInputEditorInfo ?: return false
+        val inputClass = info.inputType and InputType.TYPE_MASK_CLASS
+        val variation = info.inputType and InputType.TYPE_MASK_VARIATION
+        if (inputClass == InputType.TYPE_NULL) return false
+        return !((inputClass == InputType.TYPE_CLASS_TEXT && variation in setOf(
+            InputType.TYPE_TEXT_VARIATION_PASSWORD, InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)) ||
+            (inputClass == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD))
+    }
+
+    private fun captureSmsFill(): SmsFillTouch? {
+        val entry = shownSmsCode ?: return null
+        val editor = service.currentInputEditorInfo ?: return null
+        val connection = service.currentInputConnection ?: return null
+        return SmsFillTouch(entry, editor, connection)
+    }
+
+    private fun isCurrentSmsTarget(touch: SmsFillTouch): Boolean =
+        barStateMachine.currentState == QuickBarStateMachine.State.Always &&
+            alwaysUi.currentState == AlwaysUi.State.SmsCode && alwaysUi.smsCodeUi.fill.isShown &&
+            service.currentInputEditorInfo === touch.editor && service.currentInputConnection === touch.connection &&
+            canShowSmsCode() && SmsCodeInbox.current() == touch.entry
 
     private val swipeDownHideKeyboardCallback: ((KeyBehavior) -> Unit) = { d ->
         if (d == KeyBehavior.SWIPE_DOWN) {
@@ -191,6 +235,40 @@ class InputBarDelegate(override val di: DI) :
             }
             clipboardUi.dismiss.setOnClickListener {
                 dismissClipboardSuggestion()
+            }
+            smsCodeUi.fill.setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { smsTouchAttempted = true; smsFillTouch = captureSmsFill() }
+                    MotionEvent.ACTION_CANCEL -> { smsTouchAttempted = false; smsFillTouch = null }
+                }
+                false
+            }
+            smsCodeUi.fill.setOnClickListener {
+                // Accessibility clicks have no pointer DOWN; their target is captured at invocation.
+                val touch = if (smsTouchAttempted) smsFillTouch else captureSmsFill()
+                smsTouchAttempted = false
+                smsFillTouch = null
+                if (touch == null) return@setOnClickListener
+                // Recheck expiry, permissions and editor at the actual tap, not just when rendered.
+                if (!isCurrentSmsTarget(touch)) {
+                    evalAlwaysUiState()
+                    return@setOnClickListener
+                }
+                val sessionId = service.panelEditorSessionId
+                service.postEditorJob {
+                    // A key may already be queued while the toolbar still looks idle.
+                    if (statusCached.isComposing) return@postEditorJob
+                    com.osfans.trime.core.Rime.enqueueEditorAction {
+                        if (service.panelEditorSessionId != sessionId || !isCurrentSmsTarget(touch) || service.isRimeComposing) return@enqueueEditorAction
+                        // Bypass learning/speech/clipboard paths for this transient authentication value.
+                        if (runCatching { touch.connection.commitText(touch.entry.code, 1) }.getOrDefault(false)) SmsCodeInbox.clear()
+                        evalAlwaysUiState()
+                    }
+                }
+            }
+            smsCodeUi.dismiss.setOnClickListener {
+                SmsCodeInbox.clear()
+                evalAlwaysUiState()
             }
         }
     }
@@ -297,6 +375,22 @@ class InputBarDelegate(override val di: DI) :
             add(candidateUi.root, lParams(matchParent, matchParent))
             add(tabUi.root, lParams(matchParent, matchParent))
 
+            addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {
+                    smsObservationJob?.cancel()
+                    smsObservationJob = service.lifecycleScope.launch {
+                        SmsCodeInbox.updates.collect { evalAlwaysUiState() }
+                    }
+                }
+                override fun onViewDetachedFromWindow(v: View) {
+                    smsObservationJob?.cancel()
+                    smsObservationJob = null
+                    shownSmsCode = null
+                    smsFillTouch = null
+                    alwaysUi.smsCodeUi.show(null)
+                }
+            })
+
             evalAlwaysUiState()
             ClipboardHelper.addOnUpdateListener(onClipboardUpdateListener)
             syncToolbarOptionStates()
@@ -320,6 +414,7 @@ class InputBarDelegate(override val di: DI) :
     }
 
     override fun onStartInput(info: EditorInfo) {
+        smsFillTouch = null
         clearGlideCandidates()
         evalAlwaysUiState()
     }

@@ -6,9 +6,15 @@
 package com.osfans.trime.ime.core
 
 import android.annotation.SuppressLint
+import android.graphics.Canvas
+import android.graphics.Path
+import android.graphics.RectF
 import android.os.Build
 import android.view.ContextThemeWrapper
 import android.view.View
+import android.view.MotionEvent
+import android.view.Gravity
+import android.widget.TextView
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsResponse
@@ -21,6 +27,7 @@ import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.core.CompositionProto
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.daemon.RimeSession
+import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
@@ -100,6 +107,8 @@ class InputView(
         }
 
     private val updateWindowViewHeightJob: Job
+    private val modelReloadJob: Job
+    private var blockedModelTouch = false
 
     override val di = DI {
         bindInstance<InputView> { this@InputView }
@@ -128,6 +137,7 @@ class InputView(
     private val inputBar: InputBarDelegate by instance()
     private val keyboardWindow: KeyboardWindow by instance()
     private val liquidWindow: LiquidWindow by instance()
+    private val compactCandidates: CompactCandidateDelegate by instance()
 
     private val candidatesMode by AppPrefs.defaultInstance().candidates.mode
 
@@ -165,6 +175,25 @@ class InputView(
 
     val keyboardView: View
 
+    /** Clip the keyboard surface itself; rounding a child leaves the background corners square. */
+    private inner class KeyboardSurface : androidx.constraintlayout.widget.ConstraintLayout(themedContext) {
+        private val topClip = Path()
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            val radius = dp(20).toFloat()
+            topClip.reset()
+            topClip.addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()),
+                floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f), Path.Direction.CW)
+        }
+        override fun dispatchDraw(canvas: Canvas) {
+            if (!theme.isIosStyle) { super.dispatchDraw(canvas); return }
+            val checkpoint = canvas.save()
+            canvas.clipPath(topClip)
+            super.dispatchDraw(canvas)
+            canvas.restoreToCount(checkpoint)
+        }
+    }
+
     /** Restyles colors after a scheme switch without rebuilding the view tree. */
     fun refreshColors() {
         keyboardBackground.imageDrawable = scope.drawable("keyboard_background")
@@ -188,7 +217,8 @@ class InputView(
         keyboardBackground.imageDrawable = scope.drawable("keyboard_background")
 
         keyboardView =
-            constraintLayout {
+            KeyboardSurface().apply {
+                id = View.generateViewId()
                 isMotionEventSplittingEnabled = true
                 add(
                     keyboardBackground,
@@ -196,10 +226,17 @@ class InputView(
                         centerInParent()
                     },
                 )
+                if (theme.isIosStyle) add(
+                    preedit.ui.root,
+                    lParams(matchParent, preedit.embeddedSlotHeight) {
+                        topOfParent()
+                        centerHorizontally()
+                    },
+                )
                 add(
                     inputBar.view,
                     lParams(matchParent, dp(inputBar.themedHeight)) {
-                        topOfParent()
+                        if (theme.isIosStyle) below(preedit.ui.root) else topOfParent()
                         centerHorizontally()
                     },
                 )
@@ -236,6 +273,18 @@ class InputView(
                 )
             }
 
+        if (theme.isIosStyle) {
+            // Both states consume the same header budget. The idle toolbar uses the
+            // whole header instead of leaving an empty preedit strip above it.
+            preedit.onEmbeddedLayoutChanged = { composing ->
+                preedit.ui.root.updateLayoutParams { height = preedit.embeddedSlotHeight }
+                inputBar.view.updateLayoutParams {
+                    height = dp(inputBar.themedHeight) + if (composing) 0 else preedit.embeddedSlotHeight
+                }
+            }
+            preedit.refreshEmbeddedLayout()
+        }
+
         updateWindowViewHeightJob =
             service.lifecycleScope.launch {
                 keyboardWindow.currentKeyboardHeight.collect {
@@ -247,7 +296,7 @@ class InputView(
 
         updateKeyboardSize()
 
-        add(
+        if (!theme.isIosStyle) add(
             preedit.ui.root,
             lParams(wrapContent, wrapContent) {
                 above(keyboardView)
@@ -269,6 +318,40 @@ class InputView(
                 centerInParent()
             },
         )
+        val loading = TextView(themedContext).apply {
+            text = "正在切换模型…"; textSize = 17f; gravity = Gravity.CENTER
+            setTextColor(scope.colors.keyTextColor)
+            setBackgroundColor(androidx.core.graphics.ColorUtils.setAlphaComponent(scope.colors.keyboardBackColor, 245))
+            isClickable = true
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            visibility = if (RimeDaemon.isModelReloading.value) View.VISIBLE else View.GONE
+        }
+        add(loading, lParams(matchParent, 0) { topToTop = keyboardView.id; bottomOfParent(); centerHorizontally() })
+        modelReloadJob = service.lifecycleScope.launch {
+            RimeDaemon.isModelReloading.collect { loading.visibility = if (it) View.VISIBLE else View.GONE }
+        }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (RimeDaemon.isModelReloading.value) {
+            if (!blockedModelTouch) {
+                MotionEvent.obtain(event).also { cancelled ->
+                    cancelled.action = MotionEvent.ACTION_CANCEL
+                    super.dispatchTouchEvent(cancelled)
+                    cancelled.recycle()
+                }
+                blockedModelTouch = true
+            }
+            return true
+        }
+        if (blockedModelTouch) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) blockedModelTouch = false
+            else {
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) blockedModelTouch = false
+                return true
+            }
+        }
+        return super.dispatchTouchEvent(event)
     }
 
     private fun updateKeyboardSize() {
@@ -351,6 +434,8 @@ class InputView(
             is RimeMessage.StatusMessage -> broadcaster.onInputStatusUpdate(it.data)
 
             is RimeMessage.CompositionMessage -> {
+                // Keep the response identity before popup-only mode replaces the display text.
+                compactCandidates.captureComposition(it.data)
                 val data = if (candidatesMode == PopupCandidatesMode.ALWAYS_SHOW) {
                     CompositionProto()
                 } else {
@@ -383,6 +468,7 @@ class InputView(
         // cancel the notification job and clear all broadcast receivers,
         // implies that InputView should not be attached again after detached.
         updateWindowViewHeightJob.cancel()
+        modelReloadJob.cancel()
         popup.root.removeAllViews()
         broadcaster.clear()
         super.onDetachedFromWindow()

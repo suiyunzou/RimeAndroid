@@ -5,6 +5,9 @@ import android.content.Context
 /** Small, app-private preferences shared by the live keyboard and its settings panel. */
 class SmartInputPrefs(context: Context) {
     private val prefs = context.getSharedPreferences("smart_input", Context.MODE_PRIVATE)
+    var smsCodeSuggestion: Boolean
+        get() = prefs.getBoolean("sms_code_suggestion", false)
+        set(value) { prefs.edit().putBoolean("sms_code_suggestion", value).apply() }
     var wheelSlots: List<String>
         get() = prefs.getString("wheel_slots", null)?.split(',')?.filter { it in ACTIONS }?.distinct()?.take(6)
             ?: RadialMenuGeometry.DEFAULT_SLOTS

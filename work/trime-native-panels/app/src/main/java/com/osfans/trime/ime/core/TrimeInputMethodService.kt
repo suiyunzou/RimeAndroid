@@ -699,7 +699,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         super.onWindowShown()
         val smartPrefs = com.osfans.trime.ime.smart.SmartInputPrefs(this)
         if (lastReferenceHeight != smartPrefs.referenceKeyboardHeight && inputView != null) {
-            themeScope?.takeIf { it.theme.name.contains("视频参考") }?.let { scope ->
+            themeScope?.takeIf { it.theme.isIosStyle }?.let { scope ->
                 replaceInputViews(scope)
                 currentInputEditorInfo?.let { inputView?.startInput(it) }
             }
@@ -709,24 +709,21 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         }
     }
 
-    /** Panel output must follow native commit/preedit messages, not race them on a worker thread. */
+    val panelEditorSessionId: Long get() = inputSessionId
+
+    /** Serial editor work after native composition messages, with the originating session checked. */
     @androidx.annotation.MainThread
-    fun commitPanelText(text: String, isActive: () -> Boolean, pairPunctuation: Boolean = false, onResult: (Boolean) -> Unit) {
-        val sessionId = inputSessionId
+    fun editPanelText(sessionId: Long = inputSessionId, isActive: () -> Boolean,
+        edit: (android.view.inputmethod.InputConnection) -> Boolean, onResult: (Boolean) -> Unit) {
         val editor = currentInputEditorInfo
         val connection = currentInputConnection
-        if (editor == null || connection == null) {
-            onResult(false)
-            return
-        }
+        if (editor == null || connection == null) { onResult(false); return }
         postRimeJob {
             val prepared = sessionId == inputSessionId && runCatching {
                 if (statusCached.isComposing) commitComposition()
                 true
             }.getOrDefault(false)
             com.osfans.trime.core.Rime.enqueueEditorAction {
-                // This callback is consumed by the service's main-thread collector,
-                // after any native composition commit and empty-preedit responses.
                 val valid = prepared && acceptEditorMessages && sessionId == inputSessionId &&
                     currentInputEditorInfo === editor && currentInputConnection === connection && isActive()
                 val success = valid && runCatching {
@@ -734,18 +731,22 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                     try {
                         connection.finishComposingText()
                         composingText = ""
-                        if (pairPunctuation && text.length == 1 &&
-                            com.osfans.trime.ime.smart.PairPunctuationHandler.insertPair(connection, text[0])) true
-                        else commitTextWithResult(text)
-                    } finally {
-                        // A batch-finalization error must not turn an already
-                        // accepted insertion into a retry that duplicates it.
-                        runCatching { connection.endBatchEdit() }
-                    }
+                        edit(connection)
+                    } finally { runCatching { connection.endBatchEdit() } }
                 }.getOrDefault(false)
                 onResult(success)
             }
         }
+    }
+
+    /** Panel output follows native commit/preedit messages, on the main-thread collector. */
+    @androidx.annotation.MainThread
+    fun commitPanelText(text: String, isActive: () -> Boolean, pairPunctuation: Boolean = false, onResult: (Boolean) -> Unit) {
+        editPanelText(isActive = isActive, edit = { connection ->
+            if (pairPunctuation && text.length == 1 &&
+                com.osfans.trime.ime.smart.PairPunctuationHandler.insertPair(connection, text[0])) true
+            else commitTextWithResult(text)
+        }, onResult = onResult)
     }
 
     fun commitText(text: String) {
@@ -904,6 +905,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         keyCode: Int,
         event: KeyEvent,
     ): Boolean {
+        if (RimeDaemon.isModelReloading.value) return true
         if (inputDeviceManager.evaluateOnKeyDown(event, this)) {
             decorLocationUpdated = false
             forceShowSelf()
@@ -914,7 +916,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     override fun onKeyUp(
         keyCode: Int,
         event: KeyEvent,
-    ): Boolean = forwardKeyEvent(event) || super.onKeyUp(keyCode, event)
+    ): Boolean = if (RimeDaemon.isModelReloading.value) true else forwardKeyEvent(event) || super.onKeyUp(keyCode, event)
 
     // Added in API level 14, deprecated in 29
     // it's needed because editors still use it even on API 36

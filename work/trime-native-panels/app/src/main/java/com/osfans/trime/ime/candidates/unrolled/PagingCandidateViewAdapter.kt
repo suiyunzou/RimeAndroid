@@ -8,25 +8,25 @@ package com.osfans.trime.ime.candidates.unrolled
 import android.view.ViewGroup
 import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
-import com.osfans.trime.core.CandidateProto
+import com.osfans.trime.ime.candidates.IndexedCandidate
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.candidates.CandidateItemUi
 import com.osfans.trime.ime.candidates.CandidateViewHolder
 
 open class PagingCandidateViewAdapter(
     val scope: ThemeScope,
-) : PagingDataAdapter<CandidateProto, CandidateViewHolder>(diffCallback) {
+) : PagingDataAdapter<IndexedCandidate, CandidateViewHolder>(diffCallback) {
     companion object {
         private val diffCallback =
-            object : DiffUtil.ItemCallback<CandidateProto>() {
+            object : DiffUtil.ItemCallback<IndexedCandidate>() {
                 override fun areItemsTheSame(
-                    oldItem: CandidateProto,
-                    newItem: CandidateProto,
-                ): Boolean = oldItem === newItem
+                    oldItem: IndexedCandidate,
+                    newItem: IndexedCandidate,
+                ): Boolean = oldItem.index == newItem.index && oldItem.candidate.text == newItem.candidate.text
 
                 override fun areContentsTheSame(
-                    oldItem: CandidateProto,
-                    newItem: CandidateProto,
+                    oldItem: IndexedCandidate,
+                    newItem: IndexedCandidate,
                 ): Boolean = oldItem == newItem
             }
     }
@@ -53,11 +53,12 @@ open class PagingCandidateViewAdapter(
         position: Int,
     ) {
         val item = getItem(position) ?: return
-        val idx = position + offset
+        val idx = item.index
         val highlighted = idx == highlightedIndex
-        holder.ui.update(item, highlighted)
-        holder.text = item.text
-        holder.comment = item.comment
+        holder.ui.update(item.candidate, highlighted)
+        holder.text = item.candidate.text
+        holder.comment = item.candidate.comment
         holder.idx = idx
+        holder.candidateContext = item.context
     }
 }

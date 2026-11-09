@@ -214,6 +214,16 @@ class Rime :
         deleteRimeCandidate(idx, global).also { emitResponse() }
     }
 
+    override suspend fun selectCandidateIfCurrent(idx: Int, expected: CandidateContext): Boolean = withRimeContext {
+        if (!expected.matches(compositionCached, schemaCached.schemaId)) false
+        else selectRimeCandidate(idx, true).also { emitResponse() }
+    }
+
+    override suspend fun deleteCandidateIfCurrent(idx: Int, expected: CandidateContext): Boolean = withRimeContext {
+        if (!expected.matches(compositionCached, schemaCached.schemaId)) false
+        else deleteRimeCandidate(idx, true).also { emitResponse() }
+    }
+
     override suspend fun changeCandidatePage(backward: Boolean): Boolean = withRimeContext {
         changeRimeCandidatePage(backward).also { emitResponse() }
     }
@@ -272,6 +282,10 @@ class Rime :
         limit: Int,
     ): Array<CandidateProto> = withRimeContext {
         getRimeCandidates(startIndex, limit)
+    }
+
+    override suspend fun getCandidatesIfCurrent(startIndex: Int, limit: Int, expected: CandidateContext): Array<CandidateProto>? = withRimeContext {
+        if (!expected.matches(compositionCached, schemaCached.schemaId)) null else getRimeCandidates(startIndex, limit)
     }
 
     override suspend fun setCandidatePagingMode(enabled: Boolean) = withRimeContext {
@@ -430,8 +444,11 @@ class Rime :
         asciiSwitchTipsJob?.cancel()
         asciiSwitchTipsJob = lifecycleScope.launch {
             delay(1000L)
-            val ctx = getRimeContext()
-            handleRimeMessage(6, arrayOf(ctx.composition))
+            withRimeContext {
+                // Do not overwrite a composition typed while the mode tip was visible.
+                // Clearing a tip must refresh candidates with the same response identity.
+                if (compositionCached === tips) emitResponse()
+            }
         }
     }
 

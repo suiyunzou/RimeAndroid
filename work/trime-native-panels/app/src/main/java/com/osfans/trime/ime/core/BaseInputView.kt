@@ -70,7 +70,7 @@ abstract class BaseInputView(
 
     private var candidateActionMenu: PopupMenu? = null
 
-    fun showCandidateActionMenu(idx: Int, text: String, view: View, global: Boolean) {
+    fun showCandidateActionMenu(idx: Int, text: String, view: View, global: Boolean, comment: String = "", expected: com.osfans.trime.core.CandidateContext? = null) {
         candidateActionMenu?.dismiss()
         candidateActionMenu = null
         val highlightColor = scope.colors.hilitedCandidateTextColor
@@ -86,8 +86,19 @@ abstract class BaseInputView(
                     menu.add(title).apply {
                         isEnabled = false
                     }
+                    if (comment.isNotBlank()) {
+                        val correction = com.osfans.trime.ime.smart.CorrectionPresentation.parse(comment)
+                        val detail = when {
+                            correction == null -> comment
+                            correction.sentence -> "整句候选"
+                            else -> "拼音纠错：${correction.original} → ${correction.corrected}"
+                        }
+                        menu.add(detail).isEnabled = false
+                    }
                     menu.add(R.string.forget_this_word).setOnMenuItemClickListener {
-                        rime.runIfReady { deleteCandidate(idx, global) }
+                        rime.runIfReady {
+                            if (expected != null) deleteCandidateIfCurrent(idx, expected) else deleteCandidate(idx, global)
+                        }
                         true
                     }
                     setOnDismissListener {

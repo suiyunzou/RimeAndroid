@@ -15,6 +15,10 @@ class GlideGestureSession(private val density: Float) {
     var isGliding = false
         private set
 
+    /** Inspect without ending the owner's gesture when a second thumb lands. */
+    val isStationaryTap: Boolean
+        get() = active && !cancelled && !isGliding && pathLength <= 8f * density
+
     fun begin(x: Float, y: Float) {
         points.clear(); pathLength = 0f; isGliding = false; cancelled = false
         active = x.isFinite() && y.isFinite()

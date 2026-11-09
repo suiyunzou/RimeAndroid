@@ -6,7 +6,7 @@
 
 Android 代码基于 [osfans/trime](https://github.com/osfans/trime) 的提交 [`b5cad1a49095a3652e9188982de400ca3a653f37`](https://github.com/osfans/trime/commit/b5cad1a49095a3652e9188982de400ca3a653f37)，对应 Trime 3.3.13。
 
-本项目在此基础上增加原生面板、按键设置和输入交互等修改，当前定制版本为 2.30。原作者信息见 [`AUTHORS`](work/trime-native-panels/AUTHORS)，代码许可见 [`LICENSE`](LICENSE)，为 GPL-3.0-or-later。
+本项目在此基础上增加原生面板、按键设置和输入交互等修改，当前定制版本为 2.32。原作者信息见 [`AUTHORS`](work/trime-native-panels/AUTHORS)，代码许可见 [`LICENSE`](LICENSE)，为 GPL-3.0-or-later。
 
 预编译原生库来自原版 Trime 3.3.13，库文件哈希及导入记录见 [`prebuilt-provenance.json`](work/trime-native-panels/prebuilt-provenance.json)。其对应源码、依赖子模块版本见 [上游源码](https://github.com/osfans/trime/tree/b5cad1a49095a3652e9188982de400ca3a653f37) 和 [`native-source-lock.json`](docs/native-source-lock.json)。
 
@@ -45,9 +45,15 @@ ReRime 构建工具的 Apache-2.0 许可与万象词典数据的 CC BY 4.0 许�
 | 简繁转换数据 | [OpenCC](https://github.com/BYVoid/OpenCC)，Apache-2.0；保留 [许可证](docs/licenses/OpenCC-LICENSE.txt) |
 | Emoji 字符清单 | 从 Trime 原主题整理，文件内保留出处；显示字形由设备系统提供，未打包 Apple Emoji 字体 |
 | `wechat-outline.ttf` | 本项目自行绘制的线条图标，生成源码在 [`work/trime-theme`](work/trime-theme)，随项目使用 GPL-3.0-or-later |
-| 按键音 | 本项目通过程序合成，CC0；见 [声音说明](work/trime-native-panels/app/src/main/assets/feedback-tones/NOTICE.txt) |
+| 按键音 | 7 组 [Mechvibes](https://github.com/hainguyents13/mechvibes) 键盘录音，MIT；另保留 3 组合成音，CC0。见 [来源及修改](work/trime-native-panels/app/src/main/assets/feedback-tones/NOTICE.txt)、[逐文件哈希](work/trime-native-panels/app/src/main/assets/feedback-tones/recordings-provenance.json) 和 [MIT 许可](work/trime-native-panels/app/src/main/assets/feedback-tones/LICENSE-Mechvibes.txt) |
 | 文本摘录 | [eBible.org 新标点和合本（简体）](https://ebible.org/find/details.php?id=cmn-cu89s)；来源提供方声明为公有领域，保留 [来源记录](work/trime-native-panels/app/src/main/assets/book-quotes/SOURCE.json) 和随包版权说明 |
 | Gradle Wrapper | [Gradle](https://github.com/gradle/gradle)，Apache-2.0；见 [许可证](docs/licenses/Gradle-LICENSE.txt) |
 | Kotlin / Android 依赖 | 版本见 [`libs.versions.toml`](work/trime-native-panels/gradle/libs.versions.toml)；各库继续遵守自身许可，应用使用 AboutLibraries 汇集依赖信息 |
 
 README 的界面图片由本项目的 Android 模拟器生成，不是 ReRime 的产品截图。
+
+## 整句模型与在线词库
+
+2.31 内置万象 LTS 精简 v2（48,419,884 字节），可从应用设置下载并切换万象 LTS 完整版（418,080,812 字节）。两者来源为 [万象数据 LTS](https://github.com/amzxyz/rime-wanxiang-data/releases/tag/LTS)，CC BY 4.0；作者为 amzxyz 及 Wanxiang / RIME-LMDG 贡献者。精简版为本项目裁剪，未改权重，不是 ReRime 的专有模型。具体规则与 SHA256 见 [模型说明](work/trime-native-panels/app/src/main/assets/local-models/NOTICE.txt)。
+
+在线词库目前提供万象名人、艺人、多音字词三个公开词库，来源为 [万象 dicts](https://github.com/amzxyz/rime-wanxiang/tree/wanxiang/dicts)，CC BY 4.0。应用将声调拼音转为不带调全拼，并剥离附加注释列，合并到本地用户词库。文件导入及手动添加的个人数据不随源码或 APK 发布。

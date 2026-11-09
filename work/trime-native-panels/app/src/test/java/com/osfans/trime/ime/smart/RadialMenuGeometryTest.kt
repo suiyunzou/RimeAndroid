@@ -16,13 +16,13 @@ class RadialMenuGeometryTest : FunSpec({
         RadialMenuGeometry.DEFAULT_SLOTS shouldBe listOf("time", "traditional", "symbols", "clipboard", "settings")
         RadialMenuGeometry.DEFAULT_SLOTS.forEachIndexed { index, expected ->
             menu.begin(0f, 0f)
-            val (x, y) = point(60f, 162f - index * 36f)
+            val (x, y) = point(12f, 162f - index * 36f)
             menu.release(x, y) shouldBe expected
         }
     }
     test("radial dead zone outside lower half and cancellation do not execute") {
         val menu = RadialMenuGeometry(1f)
-        for ((x, y) in listOf(0f to -35f, 0f to -121f, 60f to 1f, Float.NaN to 0f)) {
+        for ((x, y) in listOf(0f to -9.9f, 0f to -121f, 60f to 1f, Float.NaN to 0f)) {
             menu.begin(0f, 0f)
             menu.release(x, y) shouldBe null
         }
@@ -33,9 +33,9 @@ class RadialMenuGeometryTest : FunSpec({
     test("density and exact radial boundaries preserve left right ordering") {
         val menu = RadialMenuGeometry(2f)
         menu.begin(100f, 200f)
-        menu.hitTest(172f, 200f) shouldBe 4
+        menu.hitTest(120f, 200f) shouldBe 4
         menu.hitTest(340f, 200f) shouldBe 4
-        menu.hitTest(171f, 200f) shouldBe -1
+        menu.hitTest(119f, 200f) shouldBe -1
         menu.hitTest(341f, 200f) shouldBe -1
         menu.hitTest(-20f, 200f) shouldBe 0
     }
@@ -77,8 +77,8 @@ class RadialMenuGeometryTest : FunSpec({
         menu.release(-70f, -130f) shouldBe "chinese_date"
         menu.release(-70f, -130f) shouldBe null
     }
-    test("horizontal time carousel stops at both video endpoints and reverses without a dead drag") {
-        val menu = RadialMenuGeometry(1f)
+    test("legacy API carousel stops at original endpoints and reverses without a dead drag") {
+        val menu = RadialMenuGeometry(1f, includeLunar = false)
         menu.begin(0f, 0f)
         menu.update(-70f, -10f)
         menu.update(-70f, -60f)
@@ -122,6 +122,19 @@ class RadialMenuGeometryTest : FunSpec({
         menu.update(-70f, -10f)
         menu.update(-70f, -35f)
         menu.release(Float.NaN, -35f) shouldBe null
+    }
+    test("lunar date and traditional time append after original five choices") {
+        val menu = RadialMenuGeometry(1f)
+        menu.begin(0f,0f); menu.update(-70f,-10f); menu.update(-70f,-60f)
+        menu.update(110f,-60f)
+        menu.selectedAction shouldBe "lunar_date"
+        menu.update(146f,-60f)
+        menu.selectedAction shouldBe "lunar_datetime"
+        menu.update(182f,-60f)
+        menu.selectedAction shouldBe "lunar_datetime"
+        menu.update(146f,-60f)
+        menu.selectedAction shouldBe "lunar_date"
+        menu.release(146f,-60f) shouldBe "lunar_date"
     }
 })
 

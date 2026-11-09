@@ -75,7 +75,11 @@ custom_phrase.txt
 clean_local_rules.tsv
 clean_email_domains.txt
 clean_height_profile.yaml
+clean_personal_dictionary.tsv
+clean_personal_dictionary.lua
+microsoft-pinyin-personalization/
 *.gram
+!work/trime-native-panels/app/src/main/assets/local-models/wanxiang-compact-v2.gram
 *.db
 *.sqlite*
 *.ldb

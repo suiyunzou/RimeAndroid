@@ -50,6 +50,12 @@ interface RimeApi {
 
     suspend fun deleteCandidate(idx: Int, global: Boolean): Boolean
 
+    suspend fun selectCandidateIfCurrent(idx: Int, expected: CandidateContext): Boolean =
+        if (expected.matches(compositionCached, schemaCached.schemaId)) selectCandidate(idx, true) else false
+
+    suspend fun deleteCandidateIfCurrent(idx: Int, expected: CandidateContext): Boolean =
+        if (expected.matches(compositionCached, schemaCached.schemaId)) deleteCandidate(idx, true) else false
+
     suspend fun changeCandidatePage(backward: Boolean): Boolean
 
     suspend fun moveCursorPos(position: Int)
@@ -89,6 +95,9 @@ interface RimeApi {
         startIndex: Int,
         limit: Int,
     ): Array<CandidateProto>
+
+    suspend fun getCandidatesIfCurrent(startIndex: Int, limit: Int, expected: CandidateContext): Array<CandidateProto>? =
+        if (expected.matches(compositionCached, schemaCached.schemaId)) getCandidates(startIndex, limit) else null
 
     suspend fun setCandidatePagingMode(enabled: Boolean)
 }

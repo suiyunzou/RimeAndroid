@@ -67,9 +67,13 @@ ANDROID_TREES = (
 )
 FONT_FILES = {"build_outline_font.py", "letter_hint_glyphs.py", "emoji_nav_icons.py", "settings_height_placement.py"}
 IMAGES = {"docs/images/keyboard.png", "docs/images/key-settings.png", "docs/images/digit-variants.png"}
-FORBIDDEN_PARTS = {"scratch", "outputs", ".git", ".idea", ".gradle", ".kotlin", "build", "__pycache__", "backups", "shared_prefs"}
-FORBIDDEN_NAMES = {"local.properties", "keystore.properties", "installation.yaml", "user.yaml", "custom_phrase.txt", "clean_local_rules.tsv", "clean_email_domains.txt", "clean_height_profile.yaml"}
+FORBIDDEN_PARTS = {"scratch", "outputs", ".git", ".idea", ".gradle", ".kotlin", "build", "__pycache__", "backups", "shared_prefs", "microsoft-pinyin-personalization"}
+FORBIDDEN_NAMES = {"local.properties", "keystore.properties", "installation.yaml", "user.yaml", "custom_phrase.txt", "clean_local_rules.tsv", "clean_email_domains.txt", "clean_height_profile.yaml", "clean_personal_dictionary.tsv", "clean_personal_dictionary.lua"}
 FORBIDDEN_SUFFIXES = {".apk", ".aab", ".zip", ".log", ".jks", ".keystore", ".p12", ".pfx", ".pem", ".key", ".db", ".sqlite", ".sqlite3", ".ldb", ".sst", ".gram"}
+PUBLIC_MODELS = {
+    ASSETS + "local-models/wanxiang-compact-v2.gram":
+        "c297a1a851efcd587d2651564881e83fe7527e6083cb18a0a735b8aa32bcdab4",
+}
 PATTERNS = {
     "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
     "GitHub token": re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,})\b"),
@@ -101,7 +105,11 @@ def main() -> int:
         p = PurePosixPath(path)
         if not allowed(path):
             errors.append((path, "outside publication scope"))
-        if set(p.parts) & FORBIDDEN_PARTS or p.name in FORBIDDEN_NAMES or p.suffix.lower() in FORBIDDEN_SUFFIXES or p.name.startswith(".env") or any(".userdb" in part for part in p.parts):
+        public_model = path in PUBLIC_MODELS and hashlib.sha256(data).hexdigest() == PUBLIC_MODELS[path]
+        private_state = p.suffix.lower() == ".json" and any(
+            label in p.stem.lower() for label in ("clipboard", "history", "recent")
+        )
+        if set(p.parts) & FORBIDDEN_PARTS or p.name in FORBIDDEN_NAMES or (p.suffix.lower() in FORBIDDEN_SUFFIXES and not public_model) or p.name.startswith(".env") or any(".userdb" in part for part in p.parts) or private_state:
             errors.append((path, "private or generated file"))
         if len(data) > 50 * 1024 * 1024:
             errors.append((path, "file exceeds 50 MiB review limit"))
@@ -116,7 +124,7 @@ def main() -> int:
                 for match in pattern.finditer(content):
                     line = content.count("\n", 0, match.start()) + 1
                     errors.append((path + ":" + str(line), label))
-        elif p.suffix.lower() not in {".png", ".ttf", ".so", ".jar", ".wav"}:
+        elif p.suffix.lower() not in {".png", ".ttf", ".so", ".jar", ".wav"} and not public_model:
             errors.append((path, "unexpected binary file"))
 
     verified_resources = 0
@@ -142,6 +150,23 @@ def main() -> int:
     tones = json.loads(files[ASSETS + "feedback-tones/manifest.json"])
     for name, info in tones.items():
         verify_hash(ASSETS + "feedback-tones/" + name + ".wav", info["sha256"])
+    tone_dir = ASSETS + "feedback-tones/"
+    recordings = json.loads(files[tone_dir + "recordings-provenance.json"])
+    reviewed_waves = {tone_dir + name + ".wav" for name in tones}
+    for pack in recordings["packs"]:
+        for item in pack["files"]:
+            name = item["file"]
+            path = tone_dir + name
+            if not re.fullmatch(r"[a-z0-9_-]+\.wav", name) or path in reviewed_waves:
+                errors.append((tone_dir + "recordings-provenance.json", "invalid or duplicate recording name"))
+                continue
+            reviewed_waves.add(path)
+            verify_hash(path, item["sha256"])
+    for path in files:
+        if path.startswith(tone_dir) and path.lower().endswith(".wav") and path not in reviewed_waves:
+            errors.append((path, "recording missing provenance receipt"))
+    for path, digest in PUBLIC_MODELS.items():
+        verify_hash(path, digest)
 
     for path in IMAGES:
         data = files[path]

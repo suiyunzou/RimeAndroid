@@ -293,10 +293,15 @@ class KeyView(
                 return
             }
             if (key.getCode(KeyBehavior.CLICK) in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) {
-                val symbol = key.keyActions[KeyBehavior.SWIPE_DOWN]?.commit?.takeIf { it.isNotEmpty() }
+                val up = smartPrefs.flickDirection == com.osfans.trime.ime.smart.FlickDirection.UP
+                val behavior = if (up) KeyBehavior.SWIPE_UP else KeyBehavior.SWIPE_DOWN
+                val mapped = key.keyActions[behavior] ?: if (up) key.keyActions[KeyBehavior.SWIPE_DOWN] else null
+                val defaultSymbol = mapped?.commit?.takeIf { it.isNotEmpty() }
                     ?: key.symbolLabel.trim().takeIf { it.isNotEmpty() }
+                val symbol = com.osfans.trime.ime.smart.FlickSymbolBinding.lockedText(
+                    smartPrefs.binding(bindingName(), up), defaultSymbol)
                 if (symbol != null) {
-                    keyboardActionListener.onSmartAction("locked_symbol:$symbol")
+                    if (symbol.isNotEmpty()) keyboardActionListener.onSmartAction("locked_symbol:$symbol")
                     return
                 }
             }
@@ -382,7 +387,7 @@ class KeyView(
 
         drawBackground(canvas, key)
 
-        val reference = theme.name.contains("视频参考")
+        val reference = theme.isIosStyle
         // Paint from the cached status: drawing a key must not wait for native input work.
         val languageKey = reference && (key.code == KeyEvent.KEYCODE_SPACE || key.click?.toggle == "ascii_mode")
         val asciiMode = if (languageKey) {
@@ -464,7 +469,7 @@ class KeyView(
             label.length == 1 && label[0].isLetter()
         val textColor = if (dimLetter) androidx.core.graphics.ColorUtils.setAlphaComponent(key.getTextColor(), 102)
             else key.getTextColor()
-        val reference = theme.name.contains("视频参考") && !label.isIconFont
+        val reference = theme.isIosStyle && !label.isIconFont
         if (reference && key.getCode(KeyBehavior.CLICK) == KeyEvent.KEYCODE_ENTER && label in setOf("↵", "⏎", "⤶")) {
             val contentWidth = (width - paddingLeft - paddingRight).toFloat()
             val contentHeight = (height - paddingTop - paddingBottom).toFloat()

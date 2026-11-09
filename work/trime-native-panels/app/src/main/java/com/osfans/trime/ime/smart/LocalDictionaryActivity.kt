@@ -14,6 +14,7 @@ import android.provider.OpenableColumns
 import android.system.Os
 import android.view.Gravity
 import android.view.View
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -33,8 +34,9 @@ class LocalDictionaryActivity : Activity() {
     private var entries = emptyList<LocalDictionaryParser.Entry>()
     private var preview: LocalDictionaryParser.Result? = null
     private var filename = ""
-    private var message = "导入的词条保存在此设备，返回键盘即可使用。"
+    private var message = ""
     private var busy = false
+    private var progressText = ""
     private var limit = 100
     private var wordPage = false
     private val ink = 0xff161619.toInt()
@@ -56,7 +58,7 @@ class LocalDictionaryActivity : Activity() {
         super.onCreate(state)
         wordPage = state?.getBoolean("wordPage") ?: false
         render()
-        runTask { entries = withContext(Dispatchers.IO) { store.read() } }
+        runTask { withContext(Dispatchers.IO) { LocalDictionaryIntegration.ensureInstalled(assets) }; entries = withContext(Dispatchers.IO) { store.read() } }
     }
     override fun onDestroy() { tasks.cancel(); super.onDestroy() }
     override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); out.putBoolean("wordPage", wordPage) }
@@ -64,7 +66,7 @@ class LocalDictionaryActivity : Activity() {
     override fun onBackPressed() { if (wordPage) { wordPage = false; render() } else finish() }
     private fun runTask(action: suspend () -> Unit) {
         if (busy) return
-        busy = true; render()
+        busy = true; progressText = ""; render()
         tasks.launch {
             try { action() }
             catch (error: kotlinx.coroutines.CancellationException) { throw error }
@@ -90,7 +92,7 @@ class LocalDictionaryActivity : Activity() {
         body.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; background = shape(Color.WHITE); setPadding(0, dp(12), 0, dp(12))
             addView(label("✓  已就绪", 20f, 0xff239a55.toInt()).apply { typeface = Typeface.DEFAULT_BOLD })
-            addView(label("本地使用 · 无需联网", 15f, muted))
+
         })
         gap(); gap()
         val importCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = shape(Color.WHITE); clipToOutline = true }
@@ -103,24 +105,26 @@ class LocalDictionaryActivity : Activity() {
         importCard.addView(button("从文件导入") {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }, 18)
         }, LinearLayout.LayoutParams(-1, dp(52)))
+        importCard.addView(button("手动添加词条") { addEntry() }, LinearLayout.LayoutParams(-1, dp(52)))
         body.addView(importCard)
+        gap(); body.addView(button("下载万象公开词库") { chooseDownload() }, LinearLayout.LayoutParams(-1, dp(52)))
         gap()
-        body.addView(label("TSV 或 Rime dict.yaml · UTF-8\n每行：词语 ⇥ 拼音 ⇥ 权重（可省略）\n最多 8 MB、10 万条。已有相同词条会保留。", 14f, muted).apply { background = shape(Color.WHITE) })
-        gap(); body.addView(label(if (busy) "正在处理本地词库…" else message, 14f, muted).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE })
+        body.addView(button("导入格式与词库来源") { showDictionaryInfo() }, LinearLayout.LayoutParams(-1, dp(48)))
+        if (busy || message.isNotEmpty()) { gap(); body.addView(label(if (busy) progressText.ifEmpty { "正在处理…" } else message, 14f, muted).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }) }
         preview?.let { pending ->
             gap()
             val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = shape(Color.WHITE) }
             card.addView(label(filename, 18f).apply { typeface = Typeface.DEFAULT_BOLD })
             val old = entries.map { it.key }.toHashSet()
             val newCount = pending.entries.count { it.key !in old }
-            card.addView(label("有效 ${pending.entries.size} 条 · 新增 $newCount 条\n重复 ${pending.duplicates} 条 · 无效 ${pending.invalid} 行", 15f, muted))
+            card.addView(label("共 ${pending.entries.size} 条 · 可新增 $newCount 条", 15f, muted))
             if (pending.errors.isNotEmpty()) card.addView(label("无效行：${pending.errors.joinToString("、")}", 13f, 0xffb4353c.toInt()))
-            pending.entries.take(8).forEach { card.addView(label("${it.text}  ·  ${it.code}", 15f)) }
+            pending.entries.take(3).forEach { card.addView(label("${it.text}  ·  ${it.code}", 15f)) }
             card.addView(button("确认导入 $newCount 条") {
                 runTask {
-                    val added = withContext(Dispatchers.IO) { store.append(pending.entries) }
+                    val added = withContext(Dispatchers.IO) { LocalDictionaryIntegration.ensureInstalled(assets); store.append(pending.entries) }
                     entries = withContext(Dispatchers.IO) { store.read() }
-                    preview = null; message = "已导入 $added 条；返回键盘后立即生效。"; limit = 100
+                    preview = null; message = "已导入 $added 条"; limit = 100
                 }
             }, LinearLayout.LayoutParams(-1, dp(48)))
             card.addView(button("取消本次导入") { preview = null; render() }, LinearLayout.LayoutParams(-1, dp(48)))
@@ -129,7 +133,8 @@ class LocalDictionaryActivity : Activity() {
         }
         if (wordPage) {
         gap(); body.addView(label("已导入 ${entries.size} 条", 17f).apply { typeface = Typeface.DEFAULT_BOLD })
-        body.addView(label("长按词条可删除。删除只影响本页导入的词库。", 13f, muted))
+        body.addView(button("手动添加词条") { addEntry() })
+        body.addView(label("长按词条可删除", 13f, muted))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = shape(Color.WHITE); clipToOutline = true }
         entries.take(limit).forEach { entry ->
             list.addView(label("${entry.text}\n${entry.code}", 16f).apply {
@@ -162,8 +167,52 @@ class LocalDictionaryActivity : Activity() {
         runTask {
             val pair = withContext(Dispatchers.IO) { readSelection(uri).let { it.first to LocalDictionaryParser.parse(it.second) } }
             filename = pair.first; preview = pair.second
-            message = "请核对预览，再确认导入。"
+            message = ""
         }
+    }
+    private fun addEntry() {
+        val fields = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
+        val word = EditText(this).apply { hint = "词语，例如：星河工作室"; maxLines = 1 }
+        val code = EditText(this).apply { hint = "拼音，例如：xing he gong zuo shi"; maxLines = 1 }
+        fields.addView(word); fields.addView(code)
+        val dialog = AlertDialog.Builder(this).setTitle("添加我的词条").setView(fields)
+            .setNegativeButton("取消", null).setPositiveButton("保存", null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val entry = LocalDictionaryParser.parseEntry(word.text.toString(), code.text.toString(), "1000")
+            if (entry == null) { code.error = "请输入词语和有效拼音，音节用空格分开"; return@setOnClickListener }
+            dialog.dismiss()
+            runTask {
+                val added = withContext(Dispatchers.IO) { LocalDictionaryIntegration.ensureInstalled(assets); store.append(listOf(entry)) }
+                entries = withContext(Dispatchers.IO) { store.read() }
+                message = if (added == 0) "该词条已存在" else "已添加“${entry.text}”"
+            }
+        } }
+        dialog.show()
+    }
+    private fun showDictionaryInfo() {
+        AlertDialog.Builder(this).setTitle("导入与来源")
+            .setMessage("支持 UTF-8 的 TSV 或 Rime dict.yaml。\n每行：词语、拼音、权重（可省略），用制表符分隔。最多 8 MB、10 万条。\n\n" + OnlineDictionarySource.attribution)
+            .setPositiveButton("完成",null).show()
+    }
+    private fun chooseDownload() {
+        AlertDialog.Builder(this).setTitle("下载万象公开词库")
+            .setItems(OnlineDictionarySource.sources.map { "${it.title}\n${it.description}" }.toTypedArray()) { _, index ->
+                val source = OnlineDictionarySource.sources[index]
+                AlertDialog.Builder(this).setTitle(source.title).setMessage("${source.description}\n下载后可预览词条。")
+                    .setNegativeButton("取消", null).setPositiveButton("下载并预览") { _, _ ->
+                        runTask {
+                            var last = 0L
+                            preview = withContext(Dispatchers.IO) { OnlineDictionarySource.download(source) { done, total ->
+                                val now = System.currentTimeMillis()
+                                if (now - last > 250) { last = now; runOnUiThread {
+                                    progressText = if (total > 0) "正在下载：${done * 100L / total}%" else "正在下载：${done / 1024} KB"
+                                    if (!isDestroyed) render()
+                                } }
+                            } }
+                            filename = source.title; message = ""
+                        }
+                    }.show()
+            }.setNegativeButton("取消", null).show()
     }
     private fun readSelection(uri: Uri): Pair<String, ByteArray> {
         val name = runCatching { contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->

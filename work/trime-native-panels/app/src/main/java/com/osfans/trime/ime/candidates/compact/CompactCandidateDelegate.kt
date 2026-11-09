@@ -1,211 +1,175 @@
-/*
- * SPDX-FileCopyrightText: 2015 - 2025 Rime community
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
+// SPDX-FileCopyrightText: 2015 - 2025 Rime community
+// SPDX-License-Identifier: GPL-3.0-or-later
 package com.osfans.trime.ime.candidates.compact
 
-import android.content.res.Configuration
-import android.graphics.drawable.ShapeDrawable
-import android.graphics.drawable.shapes.RectShape
 import android.view.ContextThemeWrapper
-import androidx.core.view.updateLayoutParams
+import android.view.MotionEvent
+import android.view.ViewConfiguration
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.flexbox.FlexboxLayoutManager
 import com.osfans.trime.R
 import com.osfans.trime.core.Candidates
+import com.osfans.trime.core.CandidateContext
+import com.osfans.trime.core.CompositionProto
+import com.osfans.trime.core.SchemaItem
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.daemon.launchOnReady
-import com.osfans.trime.data.prefs.AppPrefs
-import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.bar.UnrollButtonStateMachine
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
-import com.osfans.trime.ime.candidates.unrolled.decoration.FlexboxVerticalDecoration
+import com.osfans.trime.ime.candidates.CandidateDeduplicator
+import com.osfans.trime.ime.candidates.unrolled.window.FlexboxUnrolledCandidateWindow
 import com.osfans.trime.ime.core.InputView
+import com.osfans.trime.ime.window.BoardWindowManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import org.kodein.di.DI
 import org.kodein.di.DIAware
 import org.kodein.di.instance
-import splitties.dimensions.dp
-import splitties.views.dsl.recyclerview.recyclerView
-import kotlin.math.max
+import kotlin.math.abs
 
-class CompactCandidateDelegate(override val di: DI) :
-    DIAware,
-    InputBroadcastReceiver {
+class CompactCandidateDelegate(override val di: DI) : DIAware, InputBroadcastReceiver {
     private val context: ContextThemeWrapper by instance()
     private val rime: RimeSession by instance()
     private val scope: ThemeScope by instance()
     private val inputView: InputView by instance()
     private val bar: InputBarDelegate by instance()
-
-    private val theme: Theme
-        get() = scope.theme
-
-    private val fillStyle by AppPrefs.defaultInstance().keyboard.horizontalCandidateMode
-
-    private val maxSpanCountPref by lazy {
-        AppPrefs.defaultInstance().keyboard.run {
-            if (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
-                maxSpanCount
-            } else {
-                maxSpanCountLandscape
-            }
-        }
-    }
-
-    private var layoutMinWidth = 0
-    private var layoutFlexGrow = 0f
-
-    /**
-     * (for [CompactCandidateMode.AUTO_FILL] only)
-     * Second layout pass is needed when:
-     * [^1] total candidates count < maxSpanCount && [^2] RecyclerView cannot display all of them
-     * In that case, displayed candidates should be stretched evenly (by setting flexGrow to 1.0f).
-     */
-    private var secondLayoutPassNeeded = false
-    private var secondLayoutPassDone = false
-
-    private val _unrolledCandidateOffset =
-        MutableSharedFlow<Int>(
-            replay = 1,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        )
-
-    val unrolledCandidateOffset = _unrolledCandidateOffset.asSharedFlow()
-
-    fun refreshUnrolled(childCount: Int) {
-        _unrolledCandidateOffset.tryEmit(childCount)
-        bar.unrollButtonStateMachine.push(
-            UnrollButtonStateMachine.TransitionEvent.UnrolledCandidatesUpdated,
-            UnrollButtonStateMachine.BooleanKey.UnrolledCandidatesEmpty to
-                (adapter.total == childCount),
-        )
-    }
-
-    /** Restyles the compact list after a scheme switch; visible rows re-bind. */
-    fun refreshColors() {
-        separatorDrawable.paint.color = scope.colors.candidateSeparatorColor
-        adapter.notifyDataSetChanged()
-    }
+    private val windows: BoardWindowManager by instance()
+    private val offsets = MutableSharedFlow<Int>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val unrolledCandidateOffset = offsets.asSharedFlow()
+    private val seen = HashSet<String>()
+    private var generation = 0
+    private var nextEngineIndex = 0
+    private var endReached = true
+    private var loading = false
+    private var lastOffsetEmission = -1 to -1
+    private var composition = CompositionProto()
+    private var schemaId = rime.run { schemaCached.schemaId }
+    var candidateContext = CandidateContext(composition, schemaId)
+        private set
 
     val adapter by lazy {
         CompactCandidateViewAdapter(scope).apply {
             setOnItemClickListener { _, _, position ->
-                rime.launchOnReady { it.selectCandidate(position, global = true) }
+                val item = items.getOrNull(position) ?: return@setOnItemClickListener
+                val expected = item.context ?: return@setOnItemClickListener
+                rime.launchOnReady { it.selectCandidateIfCurrent(item.index, expected) }
             }
             setOnItemLongClickListener { _, view, position ->
-                inputView.showCandidateActionMenu(position, items[position].text, view, global = true)
+                items.getOrNull(position)?.let {
+                    inputView.showCandidateActionMenu(it.index, it.candidate.text, view, global = true, comment = it.candidate.comment, expected = it.context)
+                }
                 true
             }
         }
     }
 
-    fun updateLayoutParams(minWidth: Int, flexGrow: Float) {
-        layoutMinWidth = minWidth
-        layoutFlexGrow = flexGrow
-    }
-
-    val layoutManager by lazy {
-        object : FlexboxLayoutManager(context) {
-            override fun canScrollHorizontally(): Boolean = false
-
-            override fun canScrollVertically(): Boolean = false
-
+    val layoutManager: LinearLayoutManager by lazy {
+        object : LinearLayoutManager(context, RecyclerView.HORIZONTAL, false) {
             override fun onLayoutCompleted(state: RecyclerView.State?) {
                 super.onLayoutCompleted(state)
-                val cnt = this.childCount
-                if (secondLayoutPassNeeded) {
-                    if (cnt < adapter.itemCount) {
-                        // [^2] RecyclerView can't display all candidates
-                        // update LayoutParams in onLayoutCompleted would trigger another
-                        // onLayoutCompleted, skip the second one to avoid infinite loop
-                        if (secondLayoutPassDone) return
-                        secondLayoutPassDone = true
-                        for (i in 0 until cnt) {
-                            getChildAt(i)!!.updateLayoutParams<LayoutParams> {
-                                flexGrow = 1f
-                            }
-                        }
-                    } else {
-                        secondLayoutPassNeeded = false
-                    }
-                }
-                refreshUnrolled(cnt)
+                refreshUnrolled()
+                if (childCount > 0 && !view.canScrollHorizontally(1)) loadMore()
             }
         }
     }
 
-    private val separatorDrawable by lazy {
-        ShapeDrawable(RectShape()).apply {
-            val spacing = theme.style.candidateSpacing
-            val intrinsicSize = max(spacing, context.dp(spacing)).toInt()
-            intrinsicWidth = intrinsicSize
-            intrinsicHeight = intrinsicSize
-            paint.color = scope.colors.candidateSeparatorColor
+    private fun refreshUnrolled() {
+        val last = layoutManager.findLastVisibleItemPosition()
+        val offset = adapter.items.getOrNull(last)?.index?.plus(1) ?: 0
+        val emission = generation to offset
+        if (emission != lastOffsetEmission) {
+            lastOffsetEmission = emission
+            offsets.tryEmit(offset)
         }
+        bar.unrollButtonStateMachine.push(
+            UnrollButtonStateMachine.TransitionEvent.UnrolledCandidatesUpdated,
+            UnrollButtonStateMachine.BooleanKey.UnrolledCandidatesEmpty to (endReached && last >= adapter.itemCount - 1),
+        )
     }
 
-    val view by lazy {
-        object : RecyclerView(context) {
-            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-                super.onSizeChanged(w, h, oldw, oldh)
-                if (fillStyle == CompactCandidateMode.AUTO_FILL) {
-                    val maxSpanCount = maxSpanCountPref.getValue()
-                    layoutMinWidth = w / maxSpanCount - separatorDrawable.intrinsicWidth
-                }
-            }
-        }
-        context.recyclerView(R.id.candidate_view) {
+    fun precedingTexts(offset: Int): Set<String> = adapter.items.asSequence()
+        .takeWhile { it.index < offset }.map { it.candidate.text }.toSet()
+
+    fun refreshColors() { adapter.notifyDataSetChanged() }
+
+    val view: RecyclerView by lazy {
+        RecyclerView(context).apply {
+            id = R.id.candidate_view
             itemAnimator = null
             isFocusable = false
             isFocusableInTouchMode = false
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                defaultFocusHighlightEnabled = false
-            }
+            isHorizontalScrollBarEnabled = false
             adapter = this@CompactCandidateDelegate.adapter
             layoutManager = this@CompactCandidateDelegate.layoutManager
-            addItemDecoration(FlexboxVerticalDecoration(separatorDrawable))
+            contentDescription = "候选词，左右滑动浏览，向下滑动展开"
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    refreshUnrolled()
+                    if (dx > 0 && this@CompactCandidateDelegate.layoutManager.findLastVisibleItemPosition() >=
+                        candidateCount() - 4) loadMore()
+                }
+            })
+            addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+                private var startX = 0f
+                private var startY = 0f
+                private var opened = false
+                private val slop = ViewConfiguration.get(context).scaledTouchSlop
+                override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                    if (e.actionMasked == MotionEvent.ACTION_DOWN) { startX = e.x; startY = e.y; opened = false }
+                    if (e.actionMasked == MotionEvent.ACTION_MOVE && !opened && e.y - startY > slop * 2 &&
+                        e.y - startY > abs(e.x - startX) * 1.5f) {
+                        opened = true
+                        windows.attachWindow(FlexboxUnrolledCandidateWindow(di))
+                        return true
+                    }
+                    return false
+                }
+            })
+        }
+    }
+
+    private fun candidateCount(): Int = adapter.itemCount
+
+    private fun loadMore() {
+        if (loading || endReached) return
+        loading = true
+        val requestedGeneration = generation
+        val start = nextEngineIndex
+        val expected = candidateContext
+        rime.launchOnReady { api ->
+            val batch = api.getCandidatesIfCurrent(start, 32, expected)
+            view.post {
+                if (requestedGeneration != generation) return@post
+                loading = false
+                if (batch == null) return@post
+                nextEngineIndex += batch.size
+                endReached = batch.size < 32 || (adapter.total >= 0 && nextEngineIndex >= adapter.total)
+                val added = CandidateDeduplicator.collect(batch, start, seen, expected)
+                adapter.updateCandidates(adapter.items + added, adapter.total, adapter.highlightedIdx)
+                refreshUnrolled()
+                // Duplicate-only pages must not strand the scroll position.
+                if (!endReached && added.isEmpty()) loadMore()
+            }
         }
     }
 
     override fun onCandidateListUpdate(data: Candidates.Bulk) {
-        val (total, highlighted, candidates) = data
-
-        val maxSpanCount = maxSpanCountPref.getValue()
-
-        when (fillStyle) {
-            CompactCandidateMode.NEVER_FILL -> {
-                layoutMinWidth = 0
-                layoutFlexGrow = 0f
-                secondLayoutPassNeeded = false
-            }
-
-            CompactCandidateMode.AUTO_FILL -> {
-                layoutMinWidth = view.width / maxSpanCount - separatorDrawable.intrinsicWidth
-                layoutFlexGrow = if (candidates.size < maxSpanCount) 0f else 1f
-                // [^1] total candidates count < maxSpanCount
-                secondLayoutPassNeeded = candidates.size < maxSpanCount
-                secondLayoutPassDone = false
-            }
-
-            CompactCandidateMode.ALWAYS_FILL -> {
-                layoutMinWidth = 0
-                layoutFlexGrow = 1f
-                secondLayoutPassNeeded = false
-            }
-        }
-
-        adapter.updateLayoutParams(layoutMinWidth, layoutFlexGrow)
-        adapter.updateCandidates(candidates, total, highlighted)
-
-        // not sure why empty candidates won't trigger `FlexboxLayoutManager#onLayoutCompleted()`
-        if (candidates.isEmpty()) {
-            refreshUnrolled(0)
-        }
+        generation++
+        loading = false
+        view.stopScroll()
+        seen.clear()
+        nextEngineIndex = data.candidates.size
+        endReached = data.total >= 0 && nextEngineIndex >= data.total
+        candidateContext = CandidateContext(composition, schemaId)
+        adapter.updateCandidates(CandidateDeduplicator.collect(data.candidates, seen = seen, context = candidateContext), data.total, data.highlighted)
+        layoutManager.scrollToPositionWithOffset(0, 0)
+        if (data.candidates.isEmpty()) offsets.tryEmit(0)
     }
+
+    fun captureComposition(data: CompositionProto) { composition = data }
+
+    override fun onRimeSchemaUpdated(schema: SchemaItem) { schemaId = schema.id }
 }

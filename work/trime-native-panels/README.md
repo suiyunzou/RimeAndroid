@@ -1,6 +1,6 @@
 # Android 源码入口
 
-本目录是 RimeAndroid 2.30 的 Android 项目，基于 Trime 3.3.13。
+本目录是 RimeAndroid 2.32 的 Android 项目，基于 Trime 3.3.13。
 
 - [项目介绍与界面图](../../README.md)
 - [构建说明](../../docs/BUILD.md)

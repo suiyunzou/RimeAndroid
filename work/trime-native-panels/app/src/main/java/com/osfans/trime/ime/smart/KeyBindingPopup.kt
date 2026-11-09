@@ -31,7 +31,7 @@ class KeyBindingPopup(
 ) {
     private val ink = if(dark) Color.WHITE else 0xff17171a.toInt()
     private val muted = if(dark) 0xffb1b1b8.toInt() else 0xff6e6e77.toInt()
-    private val card = if(dark) 0xff353539.toInt() else 0xfff4f4f8.toInt()
+    private val card = if(dark) 0xf0353539.toInt() else 0xf0f4f4f8.toInt()
     private val track = if(dark) 0xff48484e.toInt() else 0xffe2e3e9.toInt()
     private val blue = 0xff168fdf.toInt()
     private fun dp(v:Int) = (v*activity.resources.displayMetrics.density+.5f).toInt()
@@ -41,6 +41,7 @@ class KeyBindingPopup(
     private val content = LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL}
     private val popup = PopupWindow(activity)
     private var symbols=true
+    private var moreSymbols=false
     private var tabButtons=mutableListOf<TextView>()
     private var pointerX=0f
     private var above=true
@@ -56,15 +57,15 @@ class KeyBindingPopup(
             tabButtons.add(button);tabs.addView(button,LinearLayout.LayoutParams(dp(48),dp(30)))
         }
         header.addView(tabs);panel.addView(header)
-        val scroller=ScrollView(activity).apply{isFillViewport=true;addView(content)}
-        panel.addView(scroller,LinearLayout.LayoutParams(-1,minOf(dp(250),(visible.height()-dp(112)).coerceAtLeast(dp(96)))))
+        val scroller=ScrollView(activity).apply{isFillViewport=false;addView(content)}
+        panel.addView(scroller,LinearLayout.LayoutParams(-1,minOf(dp(196),(visible.height()-dp(112)).coerceAtLeast(dp(96)))))
         val footer=LinearLayout(activity)
         footer.addView(text("恢复此键",14f,muted).apply{gravity=Gravity.CENTER;setOnClickListener{prefs.setBinding(key,up,null);changed();popup.dismiss()}},LinearLayout.LayoutParams(0,dp(40),1f))
         footer.addView(text("完成",16f,blue).apply{gravity=Gravity.CENTER;setOnClickListener{popup.dismiss()}},LinearLayout.LayoutParams(0,dp(40),1f))
         panel.addView(footer)
         val location=IntArray(2);anchor.getLocationOnScreen(location)
         val anchorTop=location[1]+bounds.top.toInt();val anchorBottom=location[1]+bounds.bottom.toInt()
-        val width=minOf(dp(330),visible.width()-dp(24))
+        val width=minOf(dp(304),visible.width()-dp(24))
         panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED))
         val panelHeight=panel.measuredHeight
         above=anchorTop-visible.top>=panelHeight+dp(12) || visible.bottom-anchorBottom<panelHeight+dp(12)
@@ -88,12 +89,23 @@ class KeyBindingPopup(
         tabButtons.forEachIndexed { index,button -> button.background=if((index==0)==symbols)rounded(if(dark)0xff66666c.toInt() else Color.WHITE,18) else null }
         content.removeAllViews()
         if(symbols) {
-            listOf("1234567890","!?.,:;@#$%","()[]{}<>/\\","，。？！；：、…—～").forEach { row ->
+            val selected=prefs.binding(key,up)?.removePrefix("text:") ?: KeyBindingLabels.defaultHint(key)
+            val choices=if(moreSymbols) "1234567890!?.,:;@#$%()[]{}<>/\\，。？！；：、…—～&*+=_\"'".map{it.toString()}
+                else listOf("、",",","。","?","!",":",";","“","”","(",")","…","-","/","@","#","~","更多")
+            choices.chunked(6).forEach { row ->
                 val line=LinearLayout(activity)
-                row.forEach { symbol -> line.addView(text(symbol.toString(),19f).apply{gravity=Gravity.CENTER;background=rounded(track,6);setOnClickListener{prefs.setBinding(key,up,"text:$symbol");changed();popup.dismiss()}},LinearLayout.LayoutParams(0,dp(38),1f).apply{setMargins(dp(1),dp(2),dp(1),dp(2))}) }
+                row.forEach { symbol -> line.addView(text(symbol,if(symbol=="更多")12f else 22f,if(symbol==selected)blue else ink).apply{
+                    gravity=Gravity.CENTER;background=rounded(if(symbol==selected)if(dark)0xff30465c.toInt() else 0xffd8eaf9.toInt() else track,10)
+                    isSelected=symbol==selected;contentDescription=symbol;isFocusable=true;isClickable=true
+                    setOnClickListener{if(symbol=="更多"){moreSymbols=true;renderOptions()}else{prefs.setBinding(key,up,"text:$symbol");changed();popup.dismiss()}}
+                },LinearLayout.LayoutParams(0,dp(43),1f).apply{setMargins(dp(2),dp(2),dp(2),dp(2))}) }
+                repeat(6-row.size){line.addView(View(activity),LinearLayout.LayoutParams(0,dp(43),1f))}
                 content.addView(line)
             }
-            content.addView(text("自定义短语…",17f,blue).apply{gravity=Gravity.CENTER;setOnClickListener{popup.dismiss();editPhrase()}},LinearLayout.LayoutParams(-1,dp(44)))
+            val custom=LinearLayout(activity).apply{gravity=Gravity.CENTER_VERTICAL;setPadding(dp(2),dp(5),dp(2),0)}
+            custom.addView(text("自定义",17f,muted).apply{contentDescription="自定义短语…";setPadding(dp(12),0,dp(6),0);background=rounded(track,22);setOnClickListener{popup.dismiss();editPhrase()}},LinearLayout.LayoutParams(0,dp(38),1f))
+            custom.addView(text("不输入",16f,if(prefs.binding(key,up)=="text:")blue else muted).apply{gravity=Gravity.CENTER;setOnClickListener{prefs.setBinding(key,up,"text:");changed();popup.dismiss()}},LinearLayout.LayoutParams(dp(72),dp(42)))
+            content.addView(custom)
         } else {
             KeyBindingLabels.actions.forEach { (id,label) ->
                 val row=LinearLayout(activity).apply{gravity=Gravity.CENTER_VERTICAL;contentDescription=label;setPadding(dp(8),0,dp(8),0)}

@@ -42,7 +42,7 @@ cd work/trime-native-panels
 
 - 仓库内含基础拼音、笔画资源及参考主题。
 - 滑行候选表来自公开万象数据，已保留来源、许可和校验值。
-- 50 MB 句子模型、手机上的万象或雾凇完整配置、个人词库及邮箱规则不在本仓库。
+- 内置公开精简 v2 整句模型（约 46.2 MiB），来源和 SHA256 随资源保留；完整模型可在应用内按需下载。手机上的万象或雾凇个人配置、个人词库及邮箱规则不在本仓库。
 - `app/prebuilt/arm64-v8a/librime_jni.so` 是原版预编译库。来源记录在 [`prebuilt-provenance.json`](../work/trime-native-panels/prebuilt-provenance.json)。该记录涵盖原版库和基础资源，不包含后来新增的参考主题、滑行词表等资源；`checksums.json` 由构建过程重新生成。
 
 如需自行重建原生库或支持其他架构，请从 [Trime 对应源码提交](https://github.com/osfans/trime/tree/b5cad1a49095a3652e9188982de400ca3a653f37) 获取完整源码，并按上游文档准备子模块、NDK 和 CMake。固定的子模块版本记录在 [`native-source-lock.json`](native-source-lock.json)。本次整理未验证其他架构或原生库重建。

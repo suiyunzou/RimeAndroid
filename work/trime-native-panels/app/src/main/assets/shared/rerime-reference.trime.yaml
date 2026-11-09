@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Generated from trime-stock.yaml. Existing themes and user preferences are untouched.
 config_version: '3.1'
-name: 视频参考 · ReRime
+name: ios风格
 author: Local adaptation from observed video; Trime stock GPL-3.0-or-later
 style:
   auto_caps: false
@@ -10,7 +10,7 @@ style:
   candidate_spacing: 0
   candidate_text_size: 20
   candidate_text_vertical_bias: 1.0
-  candidate_view_height: 40
+  candidate_view_height: 32
   comment_font: comment.ttf
   comment_height: 12
   comment_position: right
@@ -62,7 +62,7 @@ fallback_colors:
   candidate_text_color: text_color
 preset_color_schemes:
   default:
-    name: 视频参考·浅色
+    name: ios风格·浅色
     author: Local reference adaptation
     light_scheme: reference_light
     dark_scheme: reference_dark
@@ -103,7 +103,7 @@ preset_color_schemes:
     long_text_back_color: '0xffffffff'
     liquid_keyboard_background: '0xffd1d3d9'
   reference_light:
-    name: 视频参考·浅色
+    name: ios风格·浅色
     author: Local reference adaptation
     light_scheme: reference_light
     dark_scheme: reference_dark
@@ -144,7 +144,7 @@ preset_color_schemes:
     long_text_back_color: '0xffffffff'
     liquid_keyboard_background: '0xffd1d3d9'
   reference_dark:
-    name: 视频参考·深色
+    name: ios风格·深色
     author: Local reference adaptation
     light_scheme: reference_light
     dark_scheme: reference_dark
@@ -284,7 +284,7 @@ preset_keys:
     option: emoji
 preset_keyboards:
   default:
-    name: 视频参考26键
+    name: ios风格26键
     ascii_mode: 0
     ascii_keyboard: default
     lock: true
@@ -520,7 +520,7 @@ preset_keyboards:
       key_back_color: keyboard_back_color
       height: 36
   qwerty:
-    name: 视频参考26键
+    name: ios风格26键
     ascii_mode: 0
     ascii_keyboard: default
     lock: true

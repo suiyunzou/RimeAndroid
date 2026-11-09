@@ -41,6 +41,11 @@ open class PreeditUi(
         view(::PreeditTextView) {
             setTextColor(textColor)
             textSize = theme.preedit.foreground.fontSize
+            includeFontPadding = false
+            if (theme.isIosStyle) {
+                isSingleLine = true
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
             typeface = theme.fonts.text
             setupPreeditView?.invoke(this)
             onMoveCursor = this@PreeditUi.onMoveCursor
@@ -51,8 +56,12 @@ open class PreeditUi(
             override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean = false
 
             init {
+                id = View.generateViewId()
                 orientation = HORIZONTAL
-                add(preedit, lParams())
+                if (theme.isIosStyle) {
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    add(preedit, lParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+                } else add(preedit, lParams())
             }
         }
 

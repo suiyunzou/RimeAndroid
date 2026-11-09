@@ -43,14 +43,14 @@ class KeyFlickGestureTest : FunSpec({
         gesture.move(0f, 22f, 1100)
         gesture.up(0f, 22f, 1801) shouldBe Action.CANCEL
     }
-    test("long press needs a deliberate 550 ms hold and never taps on release") {
+    test("long press needs a deliberate 800 ms hold and never taps on release") {
         val gesture = KeyFlickGesture(1f)
         gesture.down(0f, 0f, 0)
         gesture.advanceTime(280) shouldBe Action.NONE
-        gesture.advanceTime(549) shouldBe Action.NONE
-        gesture.advanceTime(550) shouldBe Action.LONG_PRESS
-        gesture.advanceTime(600) shouldBe Action.NONE
-        gesture.up(0f, 100f, 700) shouldBe Action.NONE
+        gesture.advanceTime(799) shouldBe Action.NONE
+        gesture.advanceTime(800) shouldBe Action.LONG_PRESS
+        gesture.advanceTime(850) shouldBe Action.NONE
+        gesture.up(0f, 100f, 900) shouldBe Action.NONE
     }
     test("crossing slop permanently cancels long press even after returning") {
         val gesture = KeyFlickGesture(1f)
@@ -105,42 +105,83 @@ class KeyFlickGestureTest : FunSpec({
         gesture.move(0f, 0f, 120)
         gesture.finishOverlappingTap(0f, 0f) shouldBe Action.NONE
         gesture.down(0f, 0f, 200)
-        gesture.advanceTime(750) shouldBe Action.LONG_PRESS
+        gesture.advanceTime(1000) shouldBe Action.LONG_PRESS
         gesture.finishOverlappingTap(0f, 0f) shouldBe Action.NONE
     }
-    test("a slower short flick wins before the hold deadline") {
+    test("stationary hold then flick locks before the cursor deadline") {
         val gesture = KeyFlickGesture(1f)
         gesture.down(0f, 0f, 0)
         gesture.advanceTime(350) shouldBe Action.NONE
         gesture.move(0f, 20f, 450)
         gesture.advanceTime(600) shouldBe Action.NONE
-        gesture.up(0f, 20f, 700) shouldBe Action.FLICK_DOWN
+        gesture.up(0f, 20f, 700) shouldBe Action.LOCK_FLICK_DOWN
     }
     test("queued pre-deadline movement can undo an overtaking timer") {
         val gesture = KeyFlickGesture(1f)
         gesture.down(0f, 0f, 0)
-        gesture.advanceTime(600) shouldBe Action.LONG_PRESS
+        gesture.advanceTime(850) shouldBe Action.LONG_PRESS
         gesture.restoreBeforeLongPress(0f, 10f, 400) shouldBe true
         gesture.move(0f, 10f, 400)
         gesture.move(0f, 25f, 650)
-        gesture.up(0f, 25f, 700) shouldBe Action.FLICK_DOWN
+        gesture.up(0f, 25f, 700) shouldBe Action.LOCK_FLICK_DOWN
     }
     test("queued early release is a tap while genuine post-deadline motion stays cursor") {
         val gesture = KeyFlickGesture(1f)
         gesture.down(0f, 0f, 0)
-        gesture.advanceTime(600) shouldBe Action.LONG_PRESS
+        gesture.advanceTime(850) shouldBe Action.LONG_PRESS
         gesture.restoreBeforeLongPress(0f, 0f, 400, released = true) shouldBe true
         gesture.up(0f, 0f, 400) shouldBe Action.TAP
         gesture.down(0f, 0f, 1000)
-        gesture.advanceTime(1550) shouldBe Action.LONG_PRESS
-        gesture.restoreBeforeLongPress(0f, 30f, 1550) shouldBe false
-        gesture.move(0f, 30f, 1600) shouldBe Action.NONE
-        gesture.up(0f, 30f, 1700) shouldBe Action.NONE
+        gesture.advanceTime(1800) shouldBe Action.LONG_PRESS
+        gesture.restoreBeforeLongPress(0f, 30f, 1800) shouldBe false
+        gesture.move(0f, 30f, 1850) shouldBe Action.NONE
+        gesture.up(0f, 30f, 1900) shouldBe Action.NONE
     }
     test("a delayed timer does not turn a genuine hold into a flick") {
         val gesture = KeyFlickGesture(1f)
         gesture.down(0f, 0f, 0)
-        gesture.move(0f, 30f, 600) shouldBe Action.LONG_PRESS
-        gesture.up(0f, 30f, 700) shouldBe Action.NONE
+        gesture.move(0f, 30f, 800) shouldBe Action.LONG_PRESS
+        gesture.up(0f, 30f, 900) shouldBe Action.NONE
+    }
+    test("early movement cannot become a lock just by slowing down") {
+        val gesture = KeyFlickGesture(1f)
+        gesture.down(0f, 0f, 0)
+        gesture.move(0f, 9f, 100)
+        gesture.move(0f, 20f, 500)
+        gesture.up(0f, 20f, 700) shouldBe Action.FLICK_DOWN
+    }
+    test("lock starts at 350 ms and respects upward direction and cancel") {
+        val gesture = KeyFlickGesture(1f)
+        gesture.down(0f, 0f, 0)
+        gesture.up(0f, -20f, 349) shouldBe Action.FLICK_UP
+        gesture.down(0f, 0f, 1000)
+        gesture.up(0f, -20f, 1350) shouldBe Action.LOCK_FLICK_UP
+        gesture.down(0f, 0f, 2000)
+        gesture.move(0f, 20f, 2400)
+        gesture.cancel()
+        gesture.up(0f, 20f, 2450) shouldBe Action.NONE
+    }
+    test("held flick has its own release budget after cursor threshold") {
+        val gesture = KeyFlickGesture(1f)
+        gesture.down(0f, 0f, 0)
+        gesture.move(0f, 20f, 700)
+        gesture.advanceTime(850) shouldBe Action.NONE
+        gesture.up(0f, 20f, 900) shouldBe Action.LOCK_FLICK_DOWN
+        gesture.down(0f, 0f, 1000)
+        gesture.move(0f, 20f, 1700)
+        gesture.up(0f, 20f, 2301) shouldBe Action.CANCEL
+    }
+    test("held custom text locks but commands and empty custom text do not") {
+        SmartKeyboardTouchController.resolveFlickBinding("text:@", true) shouldBe "lock_flick_symbol:@"
+        SmartKeyboardTouchController.resolveFlickBinding("text:@", false) shouldBe "text:@"
+        SmartKeyboardTouchController.resolveFlickBinding("action:copy", true) shouldBe "action:copy"
+        SmartKeyboardTouchController.resolveFlickBinding("text:", true) shouldBe "text:"
+    }
+    test("locked taps use custom corner text and never fall back from disabled text") {
+        FlickSymbolBinding.lockedText("text:#", "1") shouldBe "#"
+        FlickSymbolBinding.lockedText("text:", "1") shouldBe ""
+        FlickSymbolBinding.lockedText("action:copy", "1") shouldBe null
+        FlickSymbolBinding.lockedText(null, "1") shouldBe "1"
+        FlickSymbolBinding.lockedText(null, null) shouldBe null
     }
 })

@@ -52,6 +52,7 @@ class SmartKeyboardTouchController(
     private var mode = Mode.KEY
     private var startX = 0f
     private var startY = 0f
+    private var downEventTime = 0L
     private var lastX = 0f
     private var lastY = 0f
     private var originX = 0f
@@ -63,7 +64,9 @@ class SmartKeyboardTouchController(
     private enum class Mode { KEY, CURSOR, PINYIN, WHEEL, GLIDE }
     private val heldKey get() = keys.getOrNull(index)
     private val keyView get() = host.getChildAt(index) as? KeyView
-    private val keyCode get() = if (heldKey?.getLabel() == "ɐ") KeyEvent.KEYCODE_SHIFT_LEFT else heldKey?.getCode(KeyBehavior.CLICK) ?: 0
+    // Resolve the originating key once. A queued engine update must not change
+    // the touch stream's identity, and MOVE must not repeatedly resolve labels.
+    private var keyCode = 0
     private val longPress = Runnable {
         if (!active || cancelled || mode != Mode.KEY) return@Runnable
         if (keyCode == KeyEvent.KEYCODE_SPACE) {
@@ -86,11 +89,15 @@ class SmartKeyboardTouchController(
         }
     }
 
-    fun dispatch(event: MotionEvent): Boolean {
+    fun dispatch(event: MotionEvent, downKeyIndex: Int = -1, settlingOverlap: Boolean = false): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             cancel()
             listener.clearGlideCandidates()
-            index = keys.indexOfFirst { event.x >= it.x && event.x < it.x + it.width && event.y >= it.y && event.y < it.y + it.height }
+            index = if (downKeyIndex >= 0) downKeyIndex else keys.indexOfFirst {
+                event.x >= it.x - it.extraWidthLeft && event.x < it.x + it.width + it.extraWidthRight &&
+                    event.y >= it.y && event.y < it.y + it.height
+            }
+            keyCode = if (heldKey?.getLabel() == "ɐ") KeyEvent.KEYCODE_SHIFT_LEFT else heldKey?.getCode(KeyBehavior.CLICK) ?: 0
             val code = keyCode
             if (code !in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z && code != KeyEvent.KEYCODE_SPACE && code != KeyEvent.KEYCODE_SHIFT_LEFT && code != KeyEvent.KEYCODE_SHIFT_RIGHT) return false
             active = true
@@ -99,6 +106,7 @@ class SmartKeyboardTouchController(
             mode = Mode.KEY
             startX = event.x; lastX = event.x
             startY = event.y; lastY = event.y
+            downEventTime = event.eventTime
             originX = if (prefs.wheelOriginPlacement == "space_center") heldKey!!.x + heldKey!!.width / 2f else startX
             originY = if (prefs.wheelOriginPlacement == "space_center") heldKey!!.y + heldKey!!.height / 2f else startY
             composingAtDown = service.isRimeComposing
@@ -123,6 +131,15 @@ class SmartKeyboardTouchController(
             composingTouch?.cancelled = true
             clearVisuals()
         }
+        // Handler timers can overtake a queued release or second-thumb DOWN.
+        // Compare the original event clock before interpreting that old sample
+        // as movement inside a newly opened wheel.
+        if (!cancelled && mode == Mode.WHEEL && event.eventTime < downEventTime + 350L &&
+            (settlingOverlap || event.actionMasked == MotionEvent.ACTION_UP)) {
+            wheel.cancel()
+            mode = Mode.KEY
+            keyView?.setPressedState(true)
+        }
         if (!cancelled && mode == Mode.CURSOR && !cursorNavigated &&
             (event.actionMasked == MotionEvent.ACTION_MOVE || event.actionMasked == MotionEvent.ACTION_UP)) {
             var restore = false
@@ -133,7 +150,7 @@ class SmartKeyboardTouchController(
                 }
             }
             if (!restore) restore = flick.restoreBeforeLongPress(event.x, event.y, event.eventTime,
-                released = event.actionMasked == MotionEvent.ACTION_UP)
+                released = event.actionMasked == MotionEvent.ACTION_UP || settlingOverlap)
             if (restore) {
                 mode = Mode.KEY
                 preview.close()
@@ -178,7 +195,7 @@ class SmartKeyboardTouchController(
                             val action = flick.move(event.x, event.y, event.eventTime)
                             if (action == KeyFlickGesture.Action.LONG_PRESS) beginCursor()
                             if (flick.pendingFlick != KeyFlickGesture.Action.NONE) {
-                                val up = flick.pendingFlick == KeyFlickGesture.Action.FLICK_UP
+                                val up = flick.pendingFlick == KeyFlickGesture.Action.FLICK_UP || flick.pendingFlick == KeyFlickGesture.Action.LOCK_FLICK_UP
                                 if (prefs.allowsFlick(up)) {
                                     heldKey?.keyPressOffsetY = 2f
                                     keyView?.showFlickPreview(up)
@@ -203,6 +220,8 @@ class SmartKeyboardTouchController(
                     KeyFlickGesture.Action.TAP -> keyView?.smartTap()
                     KeyFlickGesture.Action.FLICK_UP -> dispatchFlick(true)
                     KeyFlickGesture.Action.FLICK_DOWN -> dispatchFlick(false)
+                    KeyFlickGesture.Action.LOCK_FLICK_UP -> dispatchFlick(true, lock = true)
+                    KeyFlickGesture.Action.LOCK_FLICK_DOWN -> dispatchFlick(false, lock = true)
                     else -> Unit
                 }
             }
@@ -216,10 +235,11 @@ class SmartKeyboardTouchController(
         return true
     }
 
-    /** Commit an ordinary earlier thumb tap before the next thumb starts, even if it lifts last. */
-    fun settleOverlappingLetterTap(x: Float, y: Float): Boolean {
+    /** Commit an earlier letter/space tap before the next thumb starts, even if it lifts last. */
+    fun settleOverlappingTap(x: Float, y: Float): Boolean {
         if (!active || cancelled || mode != Mode.KEY ||
-            keyCode !in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z ||
+            (keyCode !in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z && keyCode != KeyEvent.KEYCODE_SPACE) ||
+            (glideAllowed && !glide.isStationaryTap) ||
             flick.finishOverlappingTap(x, y) != KeyFlickGesture.Action.TAP) return false
         keyView?.smartTap()
         if (FeedbackTuningPrefs(host.context).configured) InputFeedbackManager.keyReleaseFeedback(host, keyCode)
@@ -228,29 +248,37 @@ class SmartKeyboardTouchController(
         return true
     }
 
-    private fun dispatchFlick(up: Boolean) {
+    private fun dispatchFlick(up: Boolean, lock: Boolean = false) {
         if (glidePrefs.enabled || !prefs.allowsFlick(up)) return
         val name = when (keyCode) {
             KeyEvent.KEYCODE_SPACE -> "space"
             KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> "shift"
             else -> ('a'.code + keyCode - KeyEvent.KEYCODE_A).toChar().toString()
         }
+        val symbolAction = if (lock) "lock_flick_symbol:" else "flick_symbol:"
         val custom = prefs.binding(name, up)
         when {
-            custom != null -> listener.onSmartAction(custom)
+            custom != null -> listener.onSmartAction(resolveFlickBinding(custom, lock))
             name == "shift" -> if (heldKey?.keyActions?.containsKey(KeyBehavior.SWIPE_DOWN) == true) keyView?.smartFlick(up) else listener.onSmartAction("english")
-            name.length == 1 && name[0] in "qwertyuiop" -> listener.onSmartAction("flick_symbol:" + "1234567890"["qwertyuiop".indexOf(name[0])])
+            name.length == 1 && name[0] in "qwertyuiop" -> listener.onSmartAction(symbolAction + "1234567890"["qwertyuiop".indexOf(name[0])])
             else -> {
                 val behavior = if (up) KeyBehavior.SWIPE_UP else KeyBehavior.SWIPE_DOWN
                 val mapped = heldKey?.keyActions?.get(behavior)
                     ?: if (up) heldKey?.keyActions?.get(KeyBehavior.SWIPE_DOWN) else null
                 val symbol = mapped?.commit?.takeIf { it.isNotEmpty() }
                     ?: if (mapped == null) heldKey?.symbolLabel?.trim()?.takeIf { it.isNotEmpty() } else null
-                if (symbol != null) listener.onSmartAction("flick_symbol:$symbol")
+                if (symbol != null) listener.onSmartAction(symbolAction + symbol)
                 else keyView?.smartFlick(up)
             }
         }
         InputFeedbackManager.keyPressVibrate(host, keyCode = keyCode)
+    }
+
+    companion object {
+        /** Text bindings still participate in hold-to-lock; commands and empty bindings do not. */
+        internal fun resolveFlickBinding(binding: String, lock: Boolean): String =
+            if (lock && binding.startsWith("text:") && binding.length > 5)
+                "lock_flick_symbol:" + binding.removePrefix("text:") else binding
     }
 
     private fun decodeGlide(points: List<GlideDecoder.Point>) {
@@ -377,6 +405,7 @@ class SmartKeyboardTouchController(
         active = false
         cancelled = false
         index = -1
+        keyCode = 0
         touchId++
     }
 }

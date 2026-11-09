@@ -1,39 +1,36 @@
-/*
- * SPDX-FileCopyrightText: 2015 - 2025 Rime community
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
+// SPDX-FileCopyrightText: 2015 - 2025 Rime community
+// SPDX-License-Identifier: GPL-3.0-or-later
 package com.osfans.trime.ime.candidates.unrolled
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
-import com.osfans.trime.core.CandidateProto
+import com.osfans.trime.core.CandidateContext
 import com.osfans.trime.daemon.RimeSession
-import timber.log.Timber
+import com.osfans.trime.ime.candidates.CandidateDeduplicator
+import com.osfans.trime.ime.candidates.IndexedCandidate
 
 class CandidatesPagingSource(
     val rime: RimeSession,
     val total: Int,
     val offset: Int,
-) : PagingSource<Int, CandidateProto>() {
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, CandidateProto> {
-        // use candidate index for key, null means load from beginning (including offset)
+    precedingTexts: Set<String> = emptySet(),
+    private val expected: CandidateContext,
+) : PagingSource<Int, IndexedCandidate>() {
+    private val seen = precedingTexts.toMutableSet()
+    private val completedPages = HashMap<Int, LoadResult.Page<Int, IndexedCandidate>>()
+
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, IndexedCandidate> {
         val startIndex = params.key ?: offset
-        val pageSize = params.loadSize
-        Timber.d("getCandidates(offset=$startIndex, limit=$pageSize)")
-        val candidates =
-            rime.runOnReady {
-                getCandidates(startIndex, pageSize)
-            }
-        val prevKey = if (startIndex >= pageSize) startIndex - pageSize else null
-        val nextKey = if (total > 0) {
-            if (startIndex + pageSize + 1 >= total) null else startIndex + pageSize
-        } else {
-            if (candidates.size < pageSize) null else startIndex + pageSize
+        completedPages[startIndex]?.let { return it }
+        val candidates = rime.runOnReady { getCandidatesIfCurrent(startIndex, params.loadSize, expected) }
+            ?: return LoadResult.Page(emptyList(), null, null)
+        val nextIndex = startIndex + candidates.size
+        val next = if (candidates.size < params.loadSize || (total >= 0 && nextIndex >= total)) null else nextIndex
+        // This list starts after the visible strip; it only pages forward. Engine indices survive filtering.
+        return LoadResult.Page(CandidateDeduplicator.collect(candidates, startIndex, seen, expected), null, next).also {
+            completedPages[startIndex] = it
         }
-        return LoadResult.Page(candidates.toList(), prevKey, nextKey)
     }
 
-    // always reload from beginning
-    override fun getRefreshKey(state: PagingState<Int, CandidateProto>) = null
+    override fun getRefreshKey(state: PagingState<Int, IndexedCandidate>) = null
 }
