@@ -4,7 +4,7 @@
 
 界面和部分交互参考 [ReRime](https://github.com/ReRime-IME)。本项目是独立的 Android 定制项目，与 ReRime 官方没有隶属关系。代码、词库和其他资源的具体出处见 [来源与许可](THIRD_PARTY.md)。
 
-**当前源码：2.32，基于 Trime 3.3.13。** 目前提供源码，尚未发布本仓库的可下载安装包。仓库不包含个人词库、聊天内容、手机备份或签名私钥。
+**当前源码为 2.32，基于 Trime 3.3.13。** ARM64 安装包和更新说明见 [GitHub Releases](https://github.com/suiyunzou/RimeAndroid/releases)。仓库不包含个人词库、聊天内容、手机备份或签名私钥。
 
 ## 看看界面
 
@@ -31,7 +31,7 @@
 
 ## 怎么使用
 
-如果你只想直接安装，请先留意本仓库后续的 [Releases](https://github.com/suiyunzou/RimeAndroid/releases)。当前还没有对外发布安装包，不要把上游 Trime 的安装包当成本定制版。
+如果你只想直接安装，请在 [Releases](https://github.com/suiyunzou/RimeAndroid/releases) 选择对应版本的 ARM64 APK。覆盖安装要求已有应用与下载包的应用 ID 和签名一致。
 
 如果你会编译 Android 项目：
 
