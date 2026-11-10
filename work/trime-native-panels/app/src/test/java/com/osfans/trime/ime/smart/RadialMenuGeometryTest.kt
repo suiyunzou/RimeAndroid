@@ -4,6 +4,7 @@ package com.osfans.trime.ime.smart
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
 
 class RadialMenuGeometryTest : FunSpec({
@@ -42,14 +43,33 @@ class RadialMenuGeometryTest : FunSpec({
     test("all visible icon centers hit their sector for one through six slots") {
         val menu = RadialMenuGeometry(1f)
         val actions = RadialMenuGeometry.DEFAULT_SLOTS + "calculator"
-        for (count in 1..6) {
-            menu.begin(0f, 0f, actions.take(count))
-            for (index in 0 until count) {
-                val angle = if (count == 1) 90f else 168f - index * 156f / (count - 1)
-                val (x, y) = point(112f, angle)
-                menu.hitTest(x, y) shouldBe index
+        for ((originX, originY, width) in listOf(Triple(192f, 190f, 384f), Triple(96f, 110f, 320f))) {
+            for (count in 1..6) {
+                menu.begin(originX, originY, actions.take(count))
+                val layout = RadialMenuLayout(originX, originY, width, 1f, count)
+                for (index in 0 until count) {
+                    val (x, y) = layout.icon(index, count)
+                    menu.hitTest(x, y) shouldBe index
+                    (x >= 20f && x <= width - 20f && y >= 20f) shouldBe true
+                }
             }
         }
+    }
+    test("long drags leave the cursor on the inner track and outside the focus lens") {
+        val menu = RadialMenuGeometry(1f)
+        menu.begin(192f, 190f)
+        val layout = RadialMenuLayout(192f, 190f, 384f, 1f, 5)
+        for (index in 0..4) {
+            val (iconX, iconY) = layout.icon(index, 5)
+            for (above in listOf(false, true)) {
+                val (x, y) = layout.cursor(iconX, iconY, above)
+                (hypot(x - 192f, y - 190f) <= layout.gestureRadius + .01f) shouldBe true
+                (hypot(iconX - x, iconY - y) > 18f + 11f) shouldBe true
+            }
+            menu.hitTest(iconX, iconY) shouldBe index
+        }
+        layout.cursor(192f, 174f, above = false) shouldBe RadialMenuLayout.Point(192f, 174f)
+        layout.cursor(192f, 190f, above = false) shouldBe RadialMenuLayout.Point(192f, 190f)
     }
     test("custom slots sanitize duplicates and unknown entries") {
         val menu = RadialMenuGeometry(1f)

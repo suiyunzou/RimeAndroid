@@ -112,7 +112,7 @@ class RadialMenuGeometry(private val density: Float, includeLunar: Boolean = tru
     }
 
     companion object {
-        // Direction selection is independent of the 112 dp icon radius.
+        // Direction selection is independent of the painted arcs and icons.
         const val INNER_RADIUS_DP = 10f
         const val OUTER_RADIUS_DP = 120f
         const val MAX_SLOTS = 6

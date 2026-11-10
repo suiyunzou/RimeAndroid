@@ -18,6 +18,9 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.graphics.ColorUtils
 import com.osfans.trime.data.theme.ColorManager
+import com.osfans.trime.ime.smart.RadialMenuLayout.Companion.ARC_MAX_DEGREES
+import com.osfans.trime.ime.smart.RadialMenuLayout.Companion.ARC_MIN_DEGREES
+import com.osfans.trime.ime.smart.RadialMenuLayout.Companion.ARC_SWEEP
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,6 +35,10 @@ class RadialMenuView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val geometry = RadialMenuGeometry(density, includeLunar = Build.VERSION.SDK_INT >= 24)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val outerBounds = RectF()
+    private val gestureBounds = RectF()
+    private var layout = RadialMenuLayout(0f, 0f, 0f, density, 0)
+    private var iconPositions = emptyList<RadialMenuLayout.Point>()
     private var visualStyle = "rainbow"
     private var originGlow = true
     private var followFinger = true
@@ -76,6 +83,7 @@ class RadialMenuView(context: Context) : View(context) {
         followFinger: Boolean = true,
     ) {
         geometry.begin(originX, originY, slots)
+        updateLayout()
         visualStyle = style.takeIf { it in STYLES } ?: "arc"
         this.originGlow = originGlow
         this.followFinger = followFinger
@@ -137,23 +145,23 @@ class RadialMenuView(context: Context) : View(context) {
     var editingAction: String? = null
         set(value) { field = value; invalidate() }
 
-    fun previewActionAt(x: Float, y: Float): String? = geometry.slots.indices
-        .minByOrNull { index ->
-            val angle = iconAngle(index)
-            hypot(x - geometry.originX - 112f * density * cos(angle).toFloat(),
-                y - geometry.originY + 112f * density * sin(angle).toFloat())
-        }?.takeIf { index ->
-            val angle = iconAngle(index)
-            hypot(x - geometry.originX - 112f * density * cos(angle).toFloat(),
-                y - geometry.originY + 112f * density * sin(angle).toFloat()) <= 28f * density
-        }?.let { geometry.slots[it] }
+    fun previewActionAt(x: Float, y: Float): String? {
+        fun distance(index: Int): Float {
+            val point = iconPositions[index]
+            return hypot(x - point.x, y - point.y)
+        }
+        return iconPositions.indices.minByOrNull(::distance)
+            ?.takeIf { distance(it) <= 28f * density }
+            ?.let { geometry.slots[it] }
+    }
 
     fun previewDropFraction(x: Float, y: Float): Float? {
         val dx = x - geometry.originX
         val dy = geometry.originY - y
         if (dy < 0f || hypot(dx, dy) < 36f * density) return null
-        val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).coerceIn(12.0, 168.0)
-        return ((168.0 - angle) / 156.0).toFloat()
+        val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+            .coerceIn(ARC_MIN_DEGREES, ARC_MAX_DEGREES)
+        return (ARC_MAX_DEGREES - angle) / ARC_SWEEP
     }
 
     private fun showPreview() {
@@ -164,6 +172,19 @@ class RadialMenuView(context: Context) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (previewMode) showPreview()
+        else if (isActive) updateLayout()
+    }
+
+    private fun updateLayout() {
+        val x = geometry.originX
+        val y = geometry.originY
+        val count = geometry.slots.size
+        layout = RadialMenuLayout(x, y, width.toFloat(), density, count)
+        iconPositions = List(count) { layout.icon(it, count) }
+        val outer = layout.outerRadius
+        val inner = layout.gestureRadius
+        outerBounds.set(x - outer, y - outer, x + outer, y + outer)
+        gestureBounds.set(x - inner, y - inner, x + inner, y + inner)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -261,13 +282,14 @@ class RadialMenuView(context: Context) : View(context) {
         canvas.save()
         val openingScale = .90f + .10f * (1f - (1f - opening) * (1f - opening))
         canvas.scale(openingScale, openingScale, cx, cy)
+        updatePointer()
         drawArc(canvas, cx, cy, if (animatorScale > 0f) elapsed else 0f, foreground, dark)
+        drawGestureTrack(canvas, foreground)
+        drawPointer(canvas, cx, cy, foreground)
+        val iconUnit = maxOf(layout.unit, .72f * density)
         for ((index, action) in geometry.slots.withIndex()) {
             if (previewMode && action == editingAction) continue
-            val angle = iconAngle(index)
-            val radius = 112f * density
-            val x = cx + radius * cos(angle).toFloat()
-            val y = cy - radius * sin(angle).toFloat()
+            val (x, y) = iconPositions[index]
             val selected = geometry.selectedIndex == index
             val target = if (selected) 1f else 0f
             val response = when (motionStyle) { "soft" -> .18f; "spring" -> .30f; else -> .48f }
@@ -284,25 +306,24 @@ class RadialMenuView(context: Context) : View(context) {
             if ((selected && focusStyle == "lens") || previewMode) {
                 paint.style = Paint.Style.FILL
                 paint.color = if (dark) Color.argb(if (selected) 210 else 130, 79, 79, 83) else Color.argb(if (selected) 235 else 150, 224, 226, 231)
-                canvas.drawCircle(x, y, (12f + 6f * focus) * density, paint)
+                canvas.drawCircle(x, y, (12f + 6f * focus) * iconUnit, paint)
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = .6f * density
                 paint.color = withAlpha(foreground, if (selected) 150 else 45)
-                canvas.drawCircle(x, y, (12f + 6f * focus) * density, paint)
+                canvas.drawCircle(x, y, (12f + 6f * focus) * iconUnit, paint)
             }
             if (selected && focusStyle == "spotlight") {
                 for (ring in 5 downTo 1) {
                     paint.style = Paint.Style.FILL
                     paint.color = withAlpha(foreground, 8)
-                    canvas.drawCircle(x, y, (12f + ring * 4f) * density, paint)
+                    canvas.drawCircle(x, y, (12f + ring * 4f) * iconUnit, paint)
                 }
             }
             val scale = 1f + .25f * focus
-            drawIcon(canvas, action, x, y, 8f * density * scale, withAlpha(foreground, visibleAlpha))
+            drawIcon(canvas, action, x, y, 8f * iconUnit * scale, withAlpha(foreground, visibleAlpha))
         }
         canvas.restore()
-        drawPointer(canvas, cx, cy, foreground)
-        val moving = abs(fingerX - drawnFingerX) + abs(fingerY - drawnFingerY) > .5f
+        val moving = followFinger && abs(fingerX - drawnFingerX) + abs(fingerY - drawnFingerY) > .5f
         val focusing = focusLevels.indices.any { focusLevels[it] != if (geometry.selectedIndex == it) 1f else 0f }
         if (isShown && animatorScale > 0f && (visualStyle in setOf("rainbow", "dewdrop") || moving || focusing || opening < 1f || (iconVisibility == "hint" && elapsed < 1250f))) postInvalidateOnAnimation()
         else if (isShown && iconVisibility == "hint" && elapsed < 1100f) postInvalidateDelayed((1100f - elapsed).toLong())
@@ -310,16 +331,13 @@ class RadialMenuView(context: Context) : View(context) {
 
     private fun pointerAngle(): Float = if (geometry.selectedIndex < 0) 90f else
         Math.toDegrees(atan2((geometry.originY - if (followFinger && animatorScale > 0f && motionStyle != "snappy") drawnFingerY else fingerY).toDouble(),
-            ((if (followFinger && animatorScale > 0f && motionStyle != "snappy") drawnFingerX else fingerX) - geometry.originX).toDouble())).toFloat().coerceIn(12f, 168f)
+            ((if (followFinger && animatorScale > 0f && motionStyle != "snappy") drawnFingerX else fingerX) - geometry.originX).toDouble())).toFloat().coerceIn(0f, 180f)
 
-    private fun iconAngle(index: Int): Double {
-        val degrees = if (geometry.slots.size == 1) 90f else 168f - index * (156f / geometry.slots.lastIndex)
-        return Math.toRadians(degrees.toDouble())
-    }
+    private fun iconAngle(index: Int): Double =
+        Math.toRadians(RadialMenuLayout.iconDegrees(index, geometry.slots.size).toDouble())
 
     private fun drawArc(canvas: Canvas, cx: Float, cy: Float, elapsed: Float, foreground: Int, dark: Boolean) {
-        val radius = 84f * density
-        val bounds = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
+        val radius = layout.outerRadius
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeWidth = .8f * density
@@ -329,30 +347,32 @@ class RadialMenuView(context: Context) : View(context) {
             "band" -> {
                 paint.strokeWidth = 23f * density
                 paint.color = if (dark) Color.argb(170, 87, 87, 92) else Color.argb(190, 200, 203, 211)
-                canvas.drawArc(bounds, -168f, 156f, false, paint)
+                canvas.drawArc(outerBounds, -ARC_MAX_DEGREES, ARC_SWEEP, false, paint)
                 drawBeads(canvas, cx, cy, radius, foreground)
             }
             "beads" -> drawBeads(canvas, cx, cy, radius, foreground)
             "rainbow" -> {
-                val selectedAngle = pointerAngle()
-                for (i in 0 until 104) {
-                    val angle = 168f - i * 1.5f
+                val selectedAngle = pointerAngle().coerceIn(ARC_MIN_DEGREES, ARC_MAX_DEGREES)
+                for (i in 0 until (ARC_SWEEP / 1.5f).toInt()) {
+                    val angle = ARC_MAX_DEGREES - i * 1.5f
                     val proximity = (1f - abs(angle - selectedAngle) / 52f).coerceIn(0f, 1f)
                     paint.strokeWidth = (.9f + if (geometry.selectedIndex >= 0) 3.2f * proximity else 0f) * density
-                    val hue = (320f - i * 2.55f + 7f * sin(elapsed / 1500f)) % 360f
+                    val hue = (320f - i * 3f + 7f * sin(elapsed / 1500f)) % 360f
                     paint.color = Color.HSVToColor((145 + proximity * 100).toInt(), floatArrayOf((hue + 360f) % 360f, .65f, if (dark) .9f else .72f))
-                    canvas.drawArc(bounds, -angle, 1.7f, false, paint)
+                    canvas.drawArc(outerBounds, -angle, 1.7f, false, paint)
                 }
             }
             "dewdrop" -> {
-                canvas.drawArc(bounds, -168f, 156f, false, paint)
+                canvas.drawArc(outerBounds, -ARC_MAX_DEGREES, ARC_SWEEP, false, paint)
                 val selected = geometry.selectedIndex.takeIf { it >= 0 } ?: 2.coerceAtMost(geometry.slots.lastIndex)
-                val angle = if (geometry.selectedIndex >= 0) Math.toRadians(pointerAngle().toDouble()) else iconAngle(selected)
+                val angle = if (geometry.selectedIndex >= 0) {
+                    Math.toRadians(pointerAngle().coerceIn(ARC_MIN_DEGREES, ARC_MAX_DEGREES).toDouble())
+                } else iconAngle(selected)
                 paint.style = Paint.Style.FILL
                 paint.color = withAlpha(foreground, 210)
                 canvas.drawCircle(cx + radius * cos(angle).toFloat(), cy - radius * sin(angle).toFloat(), (3.5f + .6f * sin(elapsed / 450f)) * density, paint)
             }
-            else -> canvas.drawArc(bounds, -168f, 156f, false, paint)
+            else -> canvas.drawArc(outerBounds, -ARC_MAX_DEGREES, ARC_SWEEP, false, paint)
         }
         paint.strokeCap = Paint.Cap.BUTT
     }
@@ -366,17 +386,7 @@ class RadialMenuView(context: Context) : View(context) {
         }
     }
 
-    private fun drawPointer(canvas: Canvas, cx: Float, cy: Float, color: Int) {
-        paint.style = Paint.Style.FILL
-        if (originGlow) {
-            paint.color = Color.rgb(19, 126, 180)
-            canvas.drawCircle(cx, cy, 4.5f * density, paint)
-            if (focusStyle == "origin") {
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = density
-                canvas.drawCircle(cx, cy, 8f * density, paint)
-            }
-        }
+    private fun updatePointer() {
         if (!followFinger || !fingerX.isFinite() || !fingerY.isFinite()) return
         when (if (animatorScale <= 0f) "snappy" else motionStyle) {
             "soft" -> { drawnFingerX += (fingerX - drawnFingerX) * .22f; drawnFingerY += (fingerY - drawnFingerY) * .22f }
@@ -387,15 +397,54 @@ class RadialMenuView(context: Context) : View(context) {
             }
             else -> { drawnFingerX = fingerX; drawnFingerY = fingerY }
         }
-        val pointerY = if (cursorPlacement == "above") (drawnFingerY - 36f * density).coerceAtLeast(15f*density) else drawnFingerY
-        val pointerX = drawnFingerX
+    }
+
+    private fun drawGestureTrack(canvas: Canvas, color: Int) {
+        if (visualStyle == "none") return
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = density
+        paint.color = withAlpha(color, 68)
+        canvas.drawArc(gestureBounds, -180f, 180f, false, paint)
+        if (geometry.selectedIndex >= 0) {
+            val angle = if (followFinger) pointerAngle()
+                else RadialMenuLayout.iconDegrees(geometry.selectedIndex, geometry.slots.size)
+            paint.strokeWidth = 2.2f * density
+            paint.color = withAlpha(color, 172)
+            val start = (angle + 13f).coerceAtMost(180f)
+            val end = (angle - 13f).coerceAtLeast(0f)
+            canvas.drawArc(gestureBounds, -start, start - end, false, paint)
+        }
+        paint.strokeCap = Paint.Cap.BUTT
+    }
+
+    private fun drawPointer(canvas: Canvas, cx: Float, cy: Float, color: Int) {
+        paint.style = Paint.Style.FILL
+        if (originGlow) {
+            paint.color = Color.rgb(19, 126, 180)
+            canvas.drawCircle(cx, cy, 4.5f * layout.unit, paint)
+            if (focusStyle == "origin") {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = density
+                canvas.drawCircle(cx, cy, 8f * layout.unit, paint)
+            }
+        }
+        if (!followFinger || !fingerX.isFinite() || !fingerY.isFinite()) return
+        val (pointerX, pointerY) = layout.cursor(drawnFingerX, drawnFingerY, cursorPlacement == "above")
+        if (visualStyle != "none" && geometry.selectedIndex >= 0) {
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = 3f * density
+            paint.color = withAlpha(color, 105)
+            canvas.drawLine(cx, cy, pointerX, pointerY, paint)
+            paint.strokeCap = Paint.Cap.BUTT
+        }
         paint.style = Paint.Style.FILL
         paint.color = withAlpha(color, 45)
-        canvas.drawCircle(pointerX, pointerY, 14f * density, paint)
+        canvas.drawCircle(pointerX, pointerY, 11f * layout.unit, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1.2f * density
         paint.color = withAlpha(color, 230)
-        canvas.drawCircle(pointerX, pointerY, 14f * density, paint)
+        canvas.drawCircle(pointerX, pointerY, 11f * layout.unit, paint)
     }
 
     private fun drawTimePreview(canvas: Canvas, dark: Boolean, color: Int) {
