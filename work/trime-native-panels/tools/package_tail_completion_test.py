@@ -1,4 +1,9 @@
-"""Package the optional x86_64 tail-completion adapter in a local debug APK."""
+"""Package the optional tail-completion adapter in a local debug APK.
+
+--abi x86_64 targets the emulator; --abi arm64-v8a targets arm64 devices. The
+librime JNI library comes per ABI from the deployed APK in --rime-apk, so the
+adapter always matches the engine that is already installed on the target.
+"""
 from argparse import ArgumentParser
 from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile
@@ -9,7 +14,8 @@ import tempfile
 
 parser = ArgumentParser(description=__doc__)
 parser.add_argument("--apk", type=Path, required=True)
-parser.add_argument("--x86-rime-apk", type=Path, required=True)
+parser.add_argument("--abi", choices=("x86_64", "arm64-v8a"), default="x86_64")
+parser.add_argument("--rime-apk", "--x86-rime-apk", dest="rime_apk", type=Path, required=True)
 parser.add_argument("--sdk", type=Path, required=True)
 parser.add_argument("--rime-header", type=Path, required=True)
 parser.add_argument("--keystore", type=Path, required=True)
@@ -29,10 +35,11 @@ args.output.parent.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(dir=args.output.parent) as temporary:
     staging = Path(temporary)
     unaligned, aligned, addon = (staging / name for name in ("unsigned.apk", "aligned.apk", "libtail_completion.so"))
-    run(clang, "--target=x86_64-linux-android21", "-shared", "-fPIC", "-O2", "-Wall", "-Wextra",
+    clang_target = {"x86_64": "x86_64-linux-android21", "arm64-v8a": "aarch64-linux-android21"}[args.abi]
+    run(clang, f"--target={clang_target}", "-shared", "-fPIC", "-O2", "-Wall", "-Wextra",
         "-Werror", "-I", args.rime_header.parent,
         root / "app/src/main/jni/tail-completion/tail_completion.c", "-ldl", "-o", addon)
-    with ZipFile(args.apk) as src, ZipFile(args.x86_rime_apk) as native, \
+    with ZipFile(args.apk) as src, ZipFile(args.rime_apk) as native, \
          ZipFile(root / "app/libs/sherpa-onnx.aar") as sherpa, ZipFile(unaligned, "w") as dst:
         for item in src.infolist():
             name = item.filename
@@ -40,11 +47,11 @@ with tempfile.TemporaryDirectory(dir=args.output.parent) as temporary:
                 continue
             dst.writestr(item, src.read(item))
         for library, binary in {
-            "librime_jni.so": native.read("lib/x86_64/librime_jni.so"),
-            "libsherpa-onnx-jni.so": sherpa.read("jni/x86_64/libsherpa-onnx-jni.so"),
+            "librime_jni.so": native.read(f"lib/{args.abi}/librime_jni.so"),
+            "libsherpa-onnx-jni.so": sherpa.read(f"jni/{args.abi}/libsherpa-onnx-jni.so"),
             addon.name: addon.read_bytes(),
         }.items():
-            dst.writestr(f"lib/x86_64/{library}", binary, ZIP_STORED)
+            dst.writestr(f"lib/{args.abi}/{library}", binary, ZIP_STORED)
     run(tools / ("zipalign.exe" if os.name == "nt" else "zipalign"), "-P", "16", "-f", "4", unaligned, aligned)
     run(tools / ("apksigner.bat" if os.name == "nt" else "apksigner"), "sign",
         "--ks", args.keystore, "--ks-pass", "pass:android", "--out", args.output, aligned)
