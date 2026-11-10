@@ -15,13 +15,14 @@ import com.osfans.trime.data.db.DatabaseBean
 import com.osfans.trime.data.theme.ThemeScope
 import splitties.dimensions.dp
 
-/** Recent clips inside the same keyboard surface; selecting a row opens its word cards. */
+/** Paste from the text area; open word cards from the trailing arrow. */
 internal class ClipboardHistoryView(
     context: Context,
     private val scope: ThemeScope,
-    private val select: (String) -> Unit,
+    private val paste: (String) -> Unit,
+    private val openSegments: (String) -> Unit,
 ) : RecyclerView(context) {
-    class Row(val root: LinearLayout, val label: TextView, val arrow: TextView, val line: View) : ViewHolder(root)
+    class Row(root: LinearLayout, val label: TextView, val arrow: TextView, val line: View) : ViewHolder(root)
 
     val clips = object : PagingDataAdapter<DatabaseBean, Row>(object : DiffUtil.ItemCallback<DatabaseBean>() {
         override fun areItemsTheSame(a: DatabaseBean, b: DatabaseBean) = a.id == b.id
@@ -33,21 +34,27 @@ internal class ClipboardHistoryView(
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+                setPaddingRelative(context.dp(18), 0, 0, 0)
+                isFocusable = true
             }
-            val arrow = TextView(context).apply { text = "›"; textSize = 28f; gravity = Gravity.CENTER }
+            val arrow = TextView(context).apply {
+                text = "›"
+                textSize = 28f
+                gravity = Gravity.CENTER
+                isFocusable = true
+            }
             val line = View(context)
             val root = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(context.dp(18), 0, context.dp(18), 0)
                 addView(LinearLayout(context).apply {
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, context.dp(10), 0, context.dp(10))
-                    addView(label, LinearLayout.LayoutParams(0, -2, 1f))
-                    addView(arrow, LinearLayout.LayoutParams(context.dp(28), -1))
+                    addView(label, LinearLayout.LayoutParams(0, -1, 1f))
+                    addView(arrow, LinearLayout.LayoutParams(context.dp(48), -1))
                 }, LinearLayout.LayoutParams(-1, context.dp(64)))
-                addView(line, LinearLayout.LayoutParams(-1, context.dp(1)))
-                isClickable = true
-                isFocusable = true
+                addView(line, LinearLayout.LayoutParams(-1, context.dp(1)).apply {
+                    marginStart = context.dp(18)
+                    marginEnd = context.dp(18)
+                })
             }
             return Row(root, label, arrow, line)
         }
@@ -59,8 +66,10 @@ internal class ClipboardHistoryView(
             holder.label.setTextColor(scope.colors.keyTextColor)
             holder.arrow.setTextColor(ColorUtils.setAlphaComponent(scope.colors.keyTextColor, 100))
             holder.line.setBackgroundColor(ColorUtils.setAlphaComponent(scope.colors.keyTextColor, 24))
-            holder.root.contentDescription = "分词记录 ${value.take(128)}"
-            holder.root.setOnClickListener { select(value) }
+            holder.label.contentDescription = "粘贴记录 ${value.take(128)}"
+            holder.arrow.contentDescription = "分词记录 ${value.take(128)}"
+            holder.label.setOnClickListener { paste(value) }
+            holder.arrow.setOnClickListener { openSegments(value) }
         }
     }
 

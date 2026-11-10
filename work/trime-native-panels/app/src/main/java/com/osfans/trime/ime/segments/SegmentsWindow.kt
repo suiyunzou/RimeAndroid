@@ -22,6 +22,8 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.updateLayoutParams
 import com.osfans.trime.ime.bar.InputBarDelegate
@@ -213,7 +215,7 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
         }
     }
     private val smartScroll by lazy { ScrollView(context).apply { isFillViewport = true; addView(smartCards) } }
-    private val historyList by lazy { ClipboardHistoryView(context, scope) { value ->
+    private val historyList by lazy { ClipboardHistoryView(context, scope, paste = ::commit) { value ->
         if (!OfflinePrivacyPolicy.sensitiveEditor) {
             currentSource = value
             tokens.clear()
@@ -328,6 +330,7 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
         setPadding(context.dp(8), context.dp(6), context.dp(8), context.dp(6))
     }
     private fun renderSmartCards() {
+        clearCardDrag()
         smartCards.removeAllViews()
         filterButtons.forEach { (filter, button) ->
             button.isSelected = filter == tokenFilter
@@ -348,7 +351,7 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
         }
         if (visible.isEmpty()) smartCards.addView(notice(if (OfflinePrivacyPolicy.sensitiveEditor) "隐私输入不读取剪贴板" else "暂无符合条件的内容"))
         visible.drop(tokenPage * cardsPerPage).take(cardsPerPage).forEach { token ->
-            val availableSplits = token.splitPoints.filter { point ->
+            val availableSplits = if (token.isMerged) token.splitPoints else token.splitPoints.filter { point ->
                 SmartClipboardTokenizer.split(token, point).any { part ->
                     tokens.none { it.start == part.start && it.end == part.end && it.text == part.text }
                 }
@@ -356,22 +359,19 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
             // The video marks word/entity boundaries, not the centre of every Chinese word.
             // Character-level refinement remains available by long press and accessibility.
             val visibleSplits = availableSplits.filter { point ->
-                point in token.wordBoundaries || token.kind != SmartClipboardTokenizer.Kind.TEXT ||
+                token.isMerged || point in token.wordBoundaries || token.kind != SmartClipboardTokenizer.Kind.TEXT ||
                     token.text.any { it.code in 32..126 }
             }
-            val chip = TokenChip(context, scope, token, visibleSplits, availableSplits, {
+            val chip = TokenChip(context, scope, token, visibleSplits, availableSplits, paste = {
                 commit(token.text)
-            }, { point ->
+            }, split = { point ->
                 val expanded = SmartClipboardTokenizer.expand(tokens, token, point)
                 if (expanded != tokens) {
                     InputFeedbackManager.keyPressVibrate(smartCards)
                     InputFeedbackManager.keyPressSound(android.view.KeyEvent.KEYCODE_SPACE)
-                    val scrollY = smartScroll.scrollY
-                    tokens.clear(); tokens.addAll(expanded)
-                    renderSmartCards()
-                    smartScroll.post { smartScroll.scrollTo(0, scrollY) }
+                    replaceCards(expanded)
                 }
-            })
+            }, swipe = ::mergeCard, drag = ::updateCardDrag, finishDrag = ::finishCardDrag)
             smartCards.addView(chip, FlexboxLayout.LayoutParams(-2, context.dp(42)).apply {
                 setMargins(context.dp(3), context.dp(3), context.dp(3), context.dp(3))
                 maxWidth = context.resources.displayMetrics.widthPixels - context.dp(28)
@@ -379,15 +379,147 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
         }
     }
 
+    private fun replaceCards(updated: List<SmartClipboardTokenizer.Token>, scrollY: Int = smartScroll.scrollY) {
+        tokens.clear()
+        tokens.addAll(updated)
+        renderSmartCards()
+        smartScroll.post { smartScroll.scrollTo(0, scrollY) }
+    }
+
+    private fun cardChips() =
+        (0 until smartCards.childCount).mapNotNull { smartCards.getChildAt(it) as? TokenChip }
+
+    private fun mergeCard(chip: TokenChip, direction: Int) {
+        val visible = cardChips()
+        val index = visible.indexOf(chip)
+        if (index < 0) return
+        val step = if (smartCards.layoutDirection == View.LAYOUT_DIRECTION_RTL) -direction else direction
+        val neighbor = visible.getOrNull(index + step) ?: return
+        val from = tokens.indexOfFirst { it === chip.token }
+        val to = tokens.indexOfFirst { it === neighbor.token }
+        if (from < 0 || to < 0 || from == to) return
+        val first = minOf(from, to)
+        val last = maxOf(from, to)
+        val merged = SmartClipboardTokenizer.merge(tokens[first], tokens[last])
+        val updated = tokens.toMutableList().apply {
+            removeAt(last)
+            this[first] = merged
+        }
+        val scrollY = if (tokenFilter == SmartClipboardTokenizer.Filter.ALL) smartScroll.scrollY else 0
+        if (tokenFilter != SmartClipboardTokenizer.Filter.ALL) {
+            tokenFilter = SmartClipboardTokenizer.Filter.ALL
+            tokenPage = first / cardsPerPage
+        }
+        InputFeedbackManager.keyPressVibrate(chip)
+        replaceCards(updated, scrollY)
+        // A filtered merge may have moved to a lower row after restoring all cards.
+        smartCards.post {
+            cardChips().firstOrNull { it.token === merged }?.let {
+                if (it.top < smartScroll.scrollY || it.bottom > smartScroll.scrollY + smartScroll.height) {
+                    smartScroll.scrollTo(0, it.top)
+                }
+            }
+        }
+    }
+
+    private data class CardDrop(val chip: TokenChip, val left: Boolean)
+    private data class CardDrag(
+        val chip: TokenChip,
+        val startX: Float,
+        val startY: Float,
+        val startScroll: Int,
+        var x: Float = startX,
+        var y: Float = startY,
+        var drop: CardDrop? = null,
+    )
+    private var cardDrag: CardDrag? = null
+    private val screenLocation = IntArray(2)
+    private val dragAutoScroll = object : Runnable {
+        override fun run() {
+            val drag = cardDrag ?: return
+            smartScroll.getLocationOnScreen(screenLocation)
+            val y = drag.y - screenLocation[1]
+            val edge = context.dp(24)
+            val step = context.dp(8)
+            val scrollY = smartScroll.scrollY
+            if (y in -edge.toFloat()..edge.toFloat()) smartScroll.scrollBy(0, -step)
+            else if (y in (smartScroll.height - edge).toFloat()..(smartScroll.height + edge).toFloat()) smartScroll.scrollBy(0, step)
+            if (smartScroll.scrollY != scrollY) positionCardDrag(drag)
+            smartScroll.postOnAnimation(this)
+        }
+    }
+
+    private fun updateCardDrag(chip: TokenChip, startX: Float, startY: Float, x: Float, y: Float) {
+        val drag = cardDrag ?: CardDrag(chip, startX, startY, smartScroll.scrollY).also {
+            cardDrag = it
+            chip.translationZ = context.dp(8).toFloat()
+            chip.alpha = .8f
+            smartScroll.postOnAnimation(dragAutoScroll)
+        }
+        drag.x = x
+        drag.y = y
+        positionCardDrag(drag)
+    }
+
+    private fun positionCardDrag(drag: CardDrag) {
+        drag.chip.translationX = drag.x - drag.startX
+        drag.chip.translationY = drag.y - drag.startY + smartScroll.scrollY - drag.startScroll
+        smartScroll.getLocationOnScreen(screenLocation)
+        val withinScroll = drag.x >= screenLocation[0] && drag.x < screenLocation[0] + smartScroll.width &&
+            drag.y >= screenLocation[1] && drag.y < screenLocation[1] + smartScroll.height
+        smartCards.getLocationOnScreen(screenLocation)
+        val x = drag.x - screenLocation[0]
+        val y = drag.y - screenLocation[1]
+        val margin = context.dp(3)
+        val target = if (withinScroll) cardChips()
+            .filter { y >= it.top - margin && y <= it.bottom + margin }
+            .minByOrNull { maxOf(it.left - x, x - it.right, 0f) } else null
+        val drop = target?.takeUnless { it === drag.chip }?.let { CardDrop(it, x < (it.left + it.right) / 2f) }
+        if (drag.drop != drop) {
+            drag.drop?.chip?.insertionOnLeft = null
+            drag.drop = drop
+            drop?.chip?.insertionOnLeft = drop.left
+        }
+    }
+
+    private fun clearCardDrag() {
+        val drag = cardDrag ?: return
+        cardDrag = null
+        smartScroll.removeCallbacks(dragAutoScroll)
+        drag.drop?.chip?.insertionOnLeft = null
+        drag.chip.apply { translationX = 0f; translationY = 0f; translationZ = 0f; alpha = 1f }
+    }
+
+    private fun finishCardDrag(chip: TokenChip, dropped: Boolean) {
+        val drag = cardDrag?.takeIf { it.chip === chip } ?: return
+        val drop = drag.drop
+        clearCardDrag()
+        if (!dropped || drop == null) return
+        val insertBefore = drop.left != (smartCards.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        val updated = tokens.toMutableList()
+        val from = updated.indexOfFirst { it === chip.token }
+        if (from < 0) return
+        updated.removeAt(from)
+        val target = updated.indexOfFirst { it === drop.chip.token }
+        if (target < 0) return
+        val insertion = target + if (insertBefore) 0 else 1
+        if (insertion == from) return
+        updated.add(insertion, chip.token)
+        replaceCards(updated)
+    }
+
     /** One flow chip: tap text to paste; a dashed divider reveals child fragments. */
     private class TokenChip(
         context: android.content.Context,
         scope: ThemeScope,
-        private val token: SmartClipboardTokenizer.Token,
+        val token: SmartClipboardTokenizer.Token,
         private val splitPoints: List<Int>,
         private val refinementPoints: List<Int>,
         private val paste: () -> Unit,
         private val split: (Int) -> Unit,
+        private val swipe: (TokenChip, Int) -> Unit,
+        private val drag: (TokenChip, Float, Float, Float, Float) -> Unit,
+        private val finishDrag: (TokenChip, Boolean) -> Unit,
     ) : androidx.appcompat.widget.AppCompatTextView(context) {
         private val divider = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = scope.colors.keyTextColor
@@ -396,6 +528,28 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
             pathEffect = android.graphics.DashPathEffect(floatArrayOf(context.dp(2).toFloat(), context.dp(3).toFloat()), 0f)
         }
         private var splitAt: Int? = null
+        private enum class Touch { IDLE, TAP, HOLD, SWIPE, DRAG, CANCELLED }
+        private var touch = Touch.IDLE
+        private var startX = 0f
+        private var startY = 0f
+        private val slop = ViewConfiguration.get(context).scaledTouchSlop
+        private val swipeThreshold = maxOf(context.dp(24), slop * 2)
+        private val hold = Runnable {
+            if (touch == Touch.TAP) {
+                touch = Touch.HOLD
+                parent?.requestDisallowInterceptTouchEvent(true)
+                InputFeedbackManager.keyPressVibrate(this)
+            }
+        }
+        var insertionOnLeft: Boolean? = null
+            set(value) {
+                field = value
+                invalidate()
+            }
+        private val insertionLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xff2e88df.toInt()
+            strokeWidth = context.dp(3).toFloat()
+        }
         // A real gap around each boundary keeps the divider clear of the glyphs.
         private val dividerGap = context.dp(8).toFloat()
         private inner class BoundaryGap : android.text.style.ReplacementSpan() {
@@ -422,13 +576,12 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
             background = scope.decorDrawable("key_back_color", cornerRadius = context.dp(6).toFloat())
             isClickable = true; isFocusable = true
             contentDescription = "粘贴 ${token.text.take(128)}" + when {
-                splitPoints.isNotEmpty() -> "；点虚线拆分，长按拆分第一处"
+                splitPoints.isNotEmpty() -> "；点虚线拆分"
                 refinementPoints.isNotEmpty() -> "；长按拆字"
                 else -> ""
             }
             setOnClickListener { val point = splitAt; splitAt = null; if (point == null) paste() else split(point) }
             if (refinementPoints.isNotEmpty()) {
-                setOnLongClickListener { splitAt = null; split(refinementPoints.first()); true }
                 androidx.core.view.ViewCompat.addAccessibilityAction(this, if (splitPoints.isEmpty()) "拆字" else "拆分词卡") { _, _ -> split(refinementPoints.first()); true }
             }
         }
@@ -442,14 +595,82 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             dividerPositions().forEach { (_, x) -> canvas.drawLine(x, context.dp(5).toFloat(), x, (height - context.dp(5)).toFloat(), divider) }
-        }
-        override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
-            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
-                splitAt = dividerPositions().minByOrNull { kotlin.math.abs(it.second - event.x) }
-                    ?.takeIf { kotlin.math.abs(it.second - event.x) <= context.dp(7) }?.first
+            insertionOnLeft?.let { left ->
+                val x = if (left) context.dp(2).toFloat() else width - context.dp(2).toFloat()
+                canvas.drawLine(x, context.dp(3).toFloat(), x, height - context.dp(3).toFloat(), insertionLine)
             }
-            if (event.actionMasked == android.view.MotionEvent.ACTION_CANCEL) splitAt = null
-            return super.onTouchEvent(event)
+        }
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            val dx = event.rawX - startX
+            val dy = event.rawY - startY
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.rawX
+                    startY = event.rawY
+                    touch = Touch.TAP
+                    isPressed = true
+                    splitAt = dividerPositions().minByOrNull { kotlin.math.abs(it.second - event.x) }
+                        ?.takeIf { kotlin.math.abs(it.second - event.x) <= context.dp(7) }?.first
+                    postDelayed(hold, ViewConfiguration.getLongPressTimeout().toLong())
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val horizontal = kotlin.math.abs(dx)
+                    val vertical = kotlin.math.abs(dy)
+                    if (maxOf(horizontal, vertical) > slop) {
+                        if (touch == Touch.TAP) {
+                            removeCallbacks(hold)
+                            touch = if (horizontal > vertical) Touch.SWIPE else Touch.CANCELLED
+                            if (touch == Touch.SWIPE) parent?.requestDisallowInterceptTouchEvent(true)
+                            isPressed = false
+                        } else if (touch == Touch.HOLD) {
+                            touch = Touch.DRAG
+                            isPressed = false
+                        }
+                    }
+                    if (touch == Touch.SWIPE) {
+                        translationX = (dx * .45f).coerceIn(-swipeThreshold.toFloat(), swipeThreshold.toFloat())
+                    }
+                    if (touch == Touch.DRAG) drag(this, startX, startY, event.rawX, event.rawY)
+                }
+                MotionEvent.ACTION_UP -> {
+                    val completed = touch
+                    resetTouch()
+                    when (completed) {
+                        Touch.TAP -> performClick()
+                        Touch.HOLD -> refinementPoints.firstOrNull()?.let(split)
+                        Touch.SWIPE -> if (kotlin.math.abs(dx) >= swipeThreshold && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                            swipe(this, if (dx < 0) -1 else 1)
+                        }
+                        Touch.DRAG -> {
+                            drag(this, startX, startY, event.rawX, event.rawY)
+                            finishDrag(this, true)
+                        }
+                        else -> Unit
+                    }
+                    splitAt = null
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> cancelTouch()
+            }
+            return true
+        }
+
+        private fun resetTouch() {
+            removeCallbacks(hold)
+            if (touch == Touch.SWIPE) translationX = 0f
+            isPressed = false
+            parent?.requestDisallowInterceptTouchEvent(false)
+            touch = Touch.IDLE
+        }
+
+        private fun cancelTouch() {
+            if (touch == Touch.DRAG) finishDrag(this, false)
+            resetTouch()
+            splitAt = null
+        }
+
+        override fun onDetachedFromWindow() {
+            cancelTouch()
+            super.onDetachedFromWindow()
         }
     }
 
@@ -511,6 +732,7 @@ class SegmentsWindow(di: DI, private val source: String, private val smartMode: 
 
     override fun onDetached() {
         if (smartMode) {
+            clearCardDrag()
             historyJob?.cancel()
             attachmentGeneration++
             if (attached) { attached = false; inputBar.view.visibility = previousBar; windowManager.view.updateLayoutParams { height = previousHeight } }

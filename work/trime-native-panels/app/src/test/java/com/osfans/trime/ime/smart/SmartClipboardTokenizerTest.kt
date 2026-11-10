@@ -72,6 +72,23 @@ class SmartClipboardTokenizerTest : FunSpec({
         val tokens = SmartClipboardTokenizer.tokenize("7 42 1234 1234")
         SmartClipboardTokenizer.filter(tokens, SmartClipboardTokenizer.Filter.NUMBERS).map { it.text } shouldBe listOf("7", "42", "1234", "1234")
     }
+    test("merged cards split back into the exact occurrences in their new order") {
+        val (first, emoji, second) = SmartClipboardTokenizer.tokenize("42 👩🏽‍💻 42")
+        val pair = SmartClipboardTokenizer.merge(second, emoji)
+        val merged = SmartClipboardTokenizer.merge(pair, first)
+        merged.text shouldBe "42 👩🏽‍💻 42"
+        merged.splitPoints.map { merged.text[it] } shouldBe listOf(' ', ' ')
+        SmartClipboardTokenizer.expand(listOf(merged), merged, merged.splitPoints.last()) shouldBe listOf(pair, first)
+        SmartClipboardTokenizer.expand(listOf(pair, first), pair, pair.splitPoints.single()) shouldBe listOf(second, emoji, first)
+    }
+    test("merge divider restores URL and number cards without re-tokenizing them") {
+        val (link, number) = SmartClipboardTokenizer.tokenize("https://example.com/a 19.90")
+        val merged = SmartClipboardTokenizer.merge(link, number)
+        merged.splitPoints shouldBe listOf(link.text.length)
+        val restored = SmartClipboardTokenizer.split(merged, merged.splitPoints.single())
+        SmartClipboardTokenizer.filter(restored, SmartClipboardTokenizer.Filter.URLS) shouldBe listOf(link)
+        SmartClipboardTokenizer.filter(restored, SmartClipboardTokenizer.Filter.NUMBERS) shouldBe listOf(number)
+    }
     test("Chinese word cards can be refined even without an ASCII separator") {
         val source = "今天送达，谢谢"
         val tokens = SmartClipboardTokenizer.tokenize(source) { value ->

@@ -1,8 +1,9 @@
 package com.osfans.trime.ime.smart
 
-/** On-device word cards. Original source offsets survive every level of refinement. */
+/** On-device word cards. Unedited fragments retain their original source offsets. */
 object SmartClipboardTokenizer {
     const val MAX_ANALYSIS_CHARS = 16_384
+    private const val MERGE_SEPARATOR = " "
     enum class Kind { TEXT, NUMBER, CODE, URL, AMOUNT }
     enum class Filter { ALL, NUMBERS, URLS }
 
@@ -13,10 +14,22 @@ object SmartClipboardTokenizer {
         val end: Int,
         /** UTF-16 boundaries reported by the local word segmenter, relative to this card. */
         val wordBoundaries: List<Int> = emptyList(),
+        val mergedParts: List<Token> = emptyList(),
     ) {
+        val isMerged: Boolean get() = mergedParts.isNotEmpty()
+        private val mergeSplits = if (!isMerged) emptyList() else buildList {
+            var offset = 0
+            for (index in 0 until mergedParts.lastIndex) {
+                offset += mergedParts[index].text.length
+                add(offset)
+                offset += MERGE_SEPARATOR.length
+            }
+        }
+
         /** A divider is BETWEEN characters, never through a Chinese character or surrogate pair. */
         val splitPoints: List<Int>
             get() {
+                if (isMerged) return mergeSplits
                 if (kind == Kind.NUMBER || kind == Kind.AMOUNT) return emptyList()
                 val schemeEnd = text.indexOf("://").let { if (it >= 0) it + 3 else 0 }
                 val separators = text.indices.filter {
@@ -217,7 +230,12 @@ object SmartClipboardTokenizer {
 
     /** Refine at one visible divider. Chinese boundaries retain both sides in full. */
     fun split(token: Token, at: Int): List<Token> {
-        if (at !in token.splitPoints) return listOf(token)
+        val boundary = token.splitPoints.indexOf(at)
+        if (boundary < 0) return listOf(token)
+        if (token.isMerged) {
+            val cut = boundary + 1
+            return listOf(group(token.mergedParts.take(cut)), group(token.mergedParts.drop(cut)))
+        }
         fun fragment(start: Int, end: Int): Token? {
             val raw = token.text.substring(start, end)
             val value = raw.trim()
@@ -233,10 +251,22 @@ object SmartClipboardTokenizer {
         return listOfNotNull(fragment(0, at), fragment(if (skipSeparator) at + 1 else at, token.text.length))
     }
 
-    /** Retain the parent, and insert each unique source fragment directly after it. */
+    private fun group(parts: List<Token>): Token =
+        if (parts.size == 1) parts.single() else Token(
+            parts.joinToString(MERGE_SEPARATOR) { it.text }, Kind.TEXT, -1, -1, mergedParts = parts,
+        )
+
+    fun merge(left: Token, right: Token): Token =
+        group(left.mergedParts.ifEmpty { listOf(left) } + right.mergedParts.ifEmpty { listOf(right) })
+
+    /** Undo a merge in place; ordinary refinement retains the parent and reveals its fragments. */
     fun expand(tokens: List<Token>, parent: Token, at: Int): List<Token> {
-        val index = tokens.indexOf(parent)
+        val index = tokens.indexOfFirst { it === parent }
         if (index < 0) return tokens
+        if (parent.isMerged) {
+            val parts = split(parent, at)
+            return if (parts.size == 2) tokens.take(index) + parts + tokens.drop(index + 1) else tokens
+        }
         val parts = split(parent, at).filter { part ->
             part != parent && tokens.none { it.start == part.start && it.end == part.end && it.text == part.text }
         }
