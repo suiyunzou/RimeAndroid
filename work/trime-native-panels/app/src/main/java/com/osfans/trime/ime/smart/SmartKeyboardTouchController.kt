@@ -216,6 +216,11 @@ class SmartKeyboardTouchController(
                 }
                 Mode.KEY -> if (glideAllowed) {
                     if (glide.finish(event.x, event.y).kind == GlideGestureSession.Kind.TAP) keyView?.smartTap()
+                } else if (isStationaryTapOnHeldKey(event.x, event.y)) {
+                    // A tap stays a tap for the whole key face. The flick classifier
+                    // drops a press that rolled farther than the flick distance without
+                    // reaching it; using the key rect prevents a lost or a later key.
+                    keyView?.smartTap()
                 } else when (flick.up(event.x, event.y, event.eventTime)) {
                     KeyFlickGesture.Action.TAP -> keyView?.smartTap()
                     KeyFlickGesture.Action.FLICK_UP -> dispatchFlick(true)
@@ -235,12 +240,30 @@ class SmartKeyboardTouchController(
         return true
     }
 
+    /** True while the current press can still end as a plain tap on its original key. */
+    private fun isStationaryTapOnHeldKey(x: Float, y: Float): Boolean {
+        val key = heldKey ?: return false
+        val inside = KeyTapSettle.isInsideKey(
+            x, y,
+            (key.x - key.extraWidthLeft).toFloat(),
+            (key.x + key.width + key.extraWidthRight).toFloat(),
+            key.y.toFloat(),
+            (key.y + key.height).toFloat(),
+        )
+        return KeyTapSettle.canSettle(flick.state, flick.pendingFlick, inside)
+    }
+
     /** Commit an earlier letter/space tap before the next thumb starts, even if it lifts last. */
     fun settleOverlappingTap(x: Float, y: Float): Boolean {
         if (!active || cancelled || mode != Mode.KEY ||
             (keyCode !in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z && keyCode != KeyEvent.KEYCODE_SPACE) ||
-            (glideAllowed && !glide.isStationaryTap) ||
-            flick.finishOverlappingTap(x, y) != KeyFlickGesture.Action.TAP) return false
+            (glideAllowed && !glide.isStationaryTap)) return false
+        // A fast two-thumb rollover can move the first finger past the old 8dp
+        // stationary limit while still staying on its key. Settling only the
+        // perfectly still press made the second thumb's letter land first, which
+        // users see as a left-hand letter turning into the right-hand one.
+        val stationary = flick.finishOverlappingTap(x, y) == KeyFlickGesture.Action.TAP
+        if (!stationary && !isStationaryTapOnHeldKey(x, y)) return false
         keyView?.smartTap()
         if (FeedbackTuningPrefs(host.context).configured) InputFeedbackManager.keyReleaseFeedback(host, keyCode)
         // The physical finger stays tracked by the dispatcher, but its eventual UP is inert.

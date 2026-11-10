@@ -1,3 +1,11 @@
+## 2.34 输入体验优化
+
+- 范围：候选引擎过滤/排序、键帽标点、候选样式、外部清空后的残留候选、触屏顺序判定、回车图标。
+- 编译 `:app:compileDebugKotlin`、构建 `:app:assembleDebug` 成功。
+- 运行 58 项直接相关单元测试（KeycapPunctuationTest 7、KeyTapSettleTest 4、KeyFlickGestureTest 21、CandidateCategoryTest 6、CandidateDeduplicatorTest 3、QuickBarStateMachineTest 8、EnterKeyDisplayDelegateTest 4、CorrectionPresentationTest 5），全部通过；未运行全量测试。
+- Redmi K80 覆盖安装 `3.3.13-2.34`（versionCode 20261110），保留默认输入法与用户数据；核对 6 类界面/交互截图、候选引擎 21 场景探针、配置哈希、崩溃日志与临时探针清理。
+- 未验证：真实双拇指同时触摸（adb 仅单点注入）、微信发送按钮时序、长拼音误打纠错质量上限、繁体/T9/双拼、全量回归与全部主题。
+- 详细记录：`outputs/输入体验2.34-验收/验收记录.md`；候选引擎对比：更新包内 `候选对比数据.md`。
 # 验证记录
 
 ## 2.31 交互与资源修改（2026-11-08 至 11-09）
@@ -31,3 +39,5 @@
 本次工作是整理和公开源码，未修改输入功能逻辑。没有重新安装手机、重跑所有功能测试、验证其他 CPU 架构、重建原生库或审计所有运行时行为。构建使用现有依赖下载缓存，未验证空缓存下载或位级可重复构建。
 
 构建保留已有的 API 弃用及 Gradle 后续版本兼容警告。通过上述检查说明本次发布范围和默认 arm64 构建可用，不代表全部设备和全部功能都已验证。
+
+

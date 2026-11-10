@@ -497,7 +497,7 @@ class KeyView(
             val contentHeight = (height - paddingTop - paddingBottom).toFloat()
             com.osfans.trime.ime.smart.ReferenceReturnIcon.draw(
                 canvas, paddingLeft + contentWidth / 2f, paddingTop + contentHeight / 2f,
-                minOf(dp(32f), contentWidth * .7f, contentHeight * .76f), textColor,
+                minOf(dp(29f), contentWidth * .7f, contentHeight * .76f), textColor,
             )
             return paddingTop + contentHeight * .12f
         }

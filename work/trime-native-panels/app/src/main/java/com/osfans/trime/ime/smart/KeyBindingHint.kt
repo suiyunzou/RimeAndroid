@@ -56,13 +56,14 @@ internal class KeyBindingHint(private val context: Context) {
         }
 
         val raw = (if (binding == null) fallback else KeyBindingLabels.label(binding)).replace('\n', ' ').replace('\r', ' ')
-        val text = ascii?.let { KeyboardPunctuation.localized(raw, it) } ?: raw
+        val text = ascii?.let { KeycapPunctuation.display(raw, it) } ?: raw
         if (text.isEmpty()) return
         if (drawMark(canvas, text, area.right - side, area.top, side, color)) return
         paint.color = color
         paint.typeface = Typeface.create(typeface, Typeface.NORMAL)
         paint.textAlign = Paint.Align.LEFT
-        paint.textSize = side * 1.12f
+        // A full-width mark keeps its em box inside the cell; narrow symbols may use a bit more.
+        paint.textSize = side * if (KeycapPunctuation.isFullwidthMark(text)) 1f else 1.12f
         val hint = if (text.codePointCount(0, text.length) == 1) text
             else TextUtils.ellipsize(text, paint, area.width(), TextUtils.TruncateAt.END).toString()
         paint.getTextBounds(hint, 0, hint.length, inkBounds)
@@ -80,15 +81,15 @@ internal class KeyBindingHint(private val context: Context) {
         canvas.restoreToCount(checkpoint)
     }
 
-    /** Common marks use one pen width. Dots and dashes retain their recognizable shape. */
+    /**
+     * Pen-drawn ASCII marks only. Chinese full-width marks return false on purpose so the key
+     * font draws the real glyph: an ASCII pen shape must never stand in for a Chinese mark.
+     * Dots and dashes retain their recognizable shape.
+     */
     private fun drawMark(canvas: Canvas, text: String, x: Float, y: Float, side: Float, color: Int): Boolean {
-        val mark = if (text == "...") '…' else text.singleOrNull() ?: return false
-        val shape = when (mark) {
-            '！' -> '!'; '？' -> '?'; '：' -> ':'; '；' -> ';'; '，' -> ','
-            '（' -> '('; '）' -> ')'; '－', '−' -> '-'; '＋' -> '+'; '＿' -> '_'
-            else -> mark
-        }
-        if (shape !in "!?:;.,、。…-+_/()\"'‘’“”") return false
+        val dots = text == "..."
+        val mark = if (dots) '…' else text.singleOrNull() ?: return false
+        if (!dots && !KeycapPunctuation.isHandDrawnMark(mark)) return false
         val checkpoint = canvas.save()
         canvas.translate(x, y)
         canvas.scale(side / 12f, side / 12f)
@@ -96,7 +97,7 @@ internal class KeyBindingHint(private val context: Context) {
         paint.color = color
         fun dot(cx: Float, cy: Float) = canvas.drawCircle(cx, cy, .95f, paint)
         fun stroke(x1: Float, y1: Float, x2: Float, y2: Float) = canvas.drawLine(x1, y1, x2, y2, line)
-        when (shape) {
+        when (mark) {
             '!' -> { stroke(6f, 1.4f, 6f, 7.1f); dot(6f, 10.6f) }
             ':' -> { dot(6f, 1.4f); dot(6f, 10.6f) }
             ';' -> { dot(6f, 1.4f); stroke(6.5f, 7.4f, 5.4f, 10.6f) }
@@ -110,39 +111,20 @@ internal class KeyBindingHint(private val context: Context) {
             }
             '.' -> dot(6f, 6f)
             ',' -> stroke(6.8f, 4f, 5.2f, 8f)
-            '、' -> stroke(4.6f, 4f, 7.4f, 8f)
-            '。' -> canvas.drawCircle(6f, 6f, 2f, line)
             '…' -> { dot(2f, 6f); dot(6f, 6f); dot(10f, 6f) }
             '-', '+', '_' -> {
-                val row = if (shape == '_') 8.8f else 6f
+                val row = if (mark == '_') 8.8f else 6f
                 stroke(1.4f, row, 10.6f, row)
-                if (shape == '+') stroke(6f, 1.4f, 6f, 10.6f)
+                if (mark == '+') stroke(6f, 1.4f, 6f, 10.6f)
             }
             '/' -> stroke(8.5f, 1.4f, 3.5f, 10.6f)
-            '\'', '"', '‘', '’', '“', '”' -> {
-                val double = shape == '"' || shape == '“' || shape == '”'
-                val open = shape == '‘' || shape == '“'
-                val start = if (double) 3.8f else 6f
-                val end = if (double) 8.2f else start
-                fun quote(cx: Float) {
-                    if (shape == '\'' || shape == '"') {
-                        stroke(cx + .7f, 3.7f, cx - .7f, 8.3f)
-                    } else {
-                        val tail = if (open) -1.3f else 1.3f
-                        val head = if (open) 8.4f else 3.6f
-                        path.rewind()
-                        path.moveTo(cx + tail, 12f - head)
-                        path.quadTo(cx - tail, 6f, cx, head)
-                        canvas.drawPath(path, line)
-                        dot(cx, head)
-                    }
-                }
-                quote(start)
-                if (double) quote(end)
+            '\'', '"' -> {
+                val starts = if (mark == '"') listOf(3.8f, 8.2f) else listOf(6f)
+                starts.forEach { stroke(it + .7f, 3.7f, it - .7f, 8.3f) }
             }
             '(', ')' -> {
-                val edge = if (shape == '(') 7.8f else 4.2f
-                val bend = if (shape == '(') 4f else 8f
+                val edge = if (mark == '(') 7.8f else 4.2f
+                val bend = if (mark == '(') 4f else 8f
                 path.rewind()
                 path.moveTo(edge, 1.4f)
                 path.quadTo(bend, 6f, edge, 10.6f)

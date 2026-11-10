@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
+import com.osfans.trime.core.Candidates
 import com.osfans.trime.core.CompositionProto
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.daemon.RimeSession
@@ -35,6 +36,7 @@ import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.broadcast.InputBroadcaster
+import com.osfans.trime.ime.candidates.CandidatePresentation
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
 import com.osfans.trime.ime.candidates.popup.PopupCandidatesMode
 import com.osfans.trime.ime.composition.PreeditDelegate
@@ -109,6 +111,15 @@ class InputView(
     private val updateWindowViewHeightJob: Job
     private val modelReloadJob: Job
     private var blockedModelTouch = false
+
+    /**
+     * Set when the host editor was reset from outside (chat apps clear the
+     * input box after sending). Rime keeps prediction candidates for the
+     * discarded input; they stay hidden until the next key or cursor move.
+     */
+    private var suppressIdleCandidates = false
+
+    private val emptyCandidates = Candidates.Bulk(total = 0, highlighted = -1)
 
     override val di = DI {
         bindInstance<InputView> { this@InputView }
@@ -401,6 +412,8 @@ class InputView(
         info: EditorInfo,
         restarting: Boolean = false,
     ) {
+        // A new editor never inherits the previous editor's idle suppression.
+        suppressIdleCandidates = false
         updateEnterKeyLabel(info)
         broadcaster.onStartInput(info, restarting)
         if (!restarting) {
@@ -439,12 +452,21 @@ class InputView(
                 } else {
                     it.data
                 }
+                if (data.length > 0) suppressIdleCandidates = false
                 broadcaster.onCompositionUpdate(data)
             }
 
             is RimeMessage.BulkCandidatesMessage -> {
-                it.context?.let { context -> compactCandidates.updateCandidates(it.data, context) }
-                broadcaster.onCandidateListUpdate(it.data)
+                if (shouldHideIdleCandidates(it)) {
+                    // UI-only fallback: the native menu is left untouched, only
+                    // the stale prediction rows are not drawn.
+                    compactCandidates.hideShownCandidates()
+                    broadcaster.onCandidateListUpdate(emptyCandidates)
+                } else {
+                    it.context?.let { context -> compactCandidates.updateCandidates(it.data, context) }
+                    broadcaster.onCandidateListUpdate(it.data)
+                    if (it.data.candidates.isNotEmpty()) suppressIdleCandidates = false
+                }
             }
 
             else -> {}
@@ -456,8 +478,40 @@ class InputView(
         start: Int,
         end: Int,
     ) {
+        // Typing again or moving the caret means the user wants suggestions
+        // back; the caret reset to the empty start position does not count.
+        if (start > 0 || start != end) suppressIdleCandidates = false
         broadcaster.onSelectionUpdate(start, end)
     }
+
+    /**
+     * Called by the service when [android.view.inputmethod.InputMethodService.onUpdateSelection]
+     * reports a backward jump that the input method itself cannot have caused.
+     *
+     * The host editor was reset under the composition (a chat app clearing the
+     * box after send, or a large external deletion). Prediction candidates for
+     * the discarded text are dropped from the strip right away; a composition
+     * that is still alive is cleared by the caller. The native menu itself is
+     * not cleared, so nothing can desynchronize the engine.
+     */
+    fun onEditorClearedExternally() {
+        suppressIdleCandidates = true
+        compactCandidates.hideShownCandidates()
+        broadcaster.onCandidateListUpdate(emptyCandidates)
+    }
+
+    /**
+     * True only for a response that carries no composition while idle
+     * candidates are suppressed. The response context is the composition of
+     * this exact response; the cached status would still describe the previous
+     * key when the candidate message arrives.
+     */
+    private fun shouldHideIdleCandidates(message: RimeMessage.BulkCandidatesMessage): Boolean =
+        CandidatePresentation.shouldHideIdleCandidates(
+            suppressIdle = suppressIdleCandidates,
+            compositionLength = message.context?.composition?.length,
+            candidateCount = message.data.candidates.size,
+        )
 
     @RequiresApi(Build.VERSION_CODES.R)
     fun handleInlineSuggestions(response: InlineSuggestionsResponse): Boolean = inputBar.handleInlineSuggestions(response)

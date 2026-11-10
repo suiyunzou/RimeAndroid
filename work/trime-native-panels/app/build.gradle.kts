@@ -25,8 +25,8 @@ android {
         applicationId = "local.trime.panels"
         minSdk = 21
         targetSdk = 37
-        versionCode = 20261109
-        versionName = "3.3.13-2.32"
+        versionCode = 20261110
+        versionName = "3.3.13-2.34"
 
         multiDexEnabled = true
         buildConfigField("String", "BUILDER", "\"${project.builder}\"")

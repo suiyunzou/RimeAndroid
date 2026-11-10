@@ -165,19 +165,26 @@ class CandidateItemUi(
         )
     }
 
+    /**
+     * [allowAccent] is decided once per response by the surrounding adapter:
+     * the emphasis color is only used when the whole correction/sentence group
+     * is contiguous in engine order. An interleaved group falls back to the
+     * ordinary colors, so rows never alternate blue/black.
+     */
     @SuppressLint("UseKtx")
     fun update(
         item: CandidateProto,
         highlighted: Boolean,
+        allowAccent: Boolean = true,
     ) {
         text.textSize = displayPrefs.candidateSize.takeIf { it > 0 }?.toFloat() ?: textSize
         text.typeface = Typeface.create(theme.fonts.candidate, if (displayPrefs.candidateBold) Typeface.BOLD else Typeface.NORMAL)
         val correction = CorrectionPresentation.parse(item.comment)
-        val modelBlue = Color.rgb(38, 111, 209)
-        val tColor = if (correction != null) modelBlue else if (highlighted) hlTextColor else textColor
+        val accent = allowAccent && CandidatePresentation.classify(item).isEmphasisGroup
+        val tColor = if (accent) EMPHASIS_TEXT_COLOR else if (highlighted) hlTextColor else textColor
         val cColor = if (highlighted) hlCommentColor else commentColor
         val cornerRadius = ctx.dp(theme.style.candidateCornerRadius)
-        val contentColor = if (correction != null && highlighted) Color.argb(24, 38, 111, 209)
+        val contentColor = if (accent && highlighted) EMPHASIS_BACK_COLOR
             else if (highlighted) hlBackColor else Color.TRANSPARENT
 
         content.background = roundedRippleDrawable(hlBackColor, cornerRadius, contentColor)
@@ -190,5 +197,11 @@ class CandidateItemUi(
             CorrectionStyle.plan(correction.original, correction.corrected, CorrectionStyleSpans.selected(ctx))) else commentText
         comment.setTextColor(cColor)
         comment.isVisible = commentText.isNotEmpty()
+    }
+
+    private companion object {
+        /** Shared accent for a contiguous correction/sentence group. */
+        val EMPHASIS_TEXT_COLOR = Color.rgb(38, 111, 209)
+        val EMPHASIS_BACK_COLOR = Color.argb(24, 38, 111, 209)
     }
 }

@@ -167,4 +167,15 @@ class CompactCandidateDelegate(override val di: DI) : DIAware {
         if (data.candidates.isEmpty()) offsets.tryEmit(0)
     }
 
+    /**
+     * Hide the strip without asking the engine.
+     *
+     * The host app may discard the editor text while Rime still serves idle
+     * prediction candidates for it; the UI hides them until the next key. This
+     * mirrors an empty engine response so indices, unroll state and paging
+     * cannot point at stale candidates. The engine menu itself is untouched.
+     */
+    fun hideShownCandidates() {
+        updateCandidates(Candidates.Bulk(total = 0, highlighted = -1), candidateContext)
+    }
 }

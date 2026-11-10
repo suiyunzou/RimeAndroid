@@ -107,6 +107,10 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     private var cursorUpdateIndex = 0
 
+    /** Last selection reported by the editor; lets stale edit jobs bail out. */
+    @Volatile private var lastSelectionStart = -1
+    @Volatile private var lastSelectionEnd = -1
+
     private val recreateInputViewPrefs: Array<PreferenceDelegate<*>> = arrayOf(
         prefs.keyboard.expandKeypressArea,
         prefs.keyboard.hideKeySymbol,
@@ -509,8 +513,75 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             candidatesEnd,
         )
         cursorUpdateIndex += 1
+        lastSelectionStart = newSelStart
+        lastSelectionEnd = newSelEnd
+        handleExternalEditorEdit(oldSelStart, oldSelEnd, newSelStart, newSelEnd)
         handleCursorUpdate(newSelStart, newSelEnd, candidatesStart, candidatesEnd, cursorUpdateIndex)
         inputView?.updateSelection(newSelStart, newSelEnd)
+    }
+
+    /**
+     * Drop a composition whose editor text was changed by the host app.
+     *
+     * Chat editors clear their input box after sending. With
+     * `inline_preedit_mode` disabled the framework reports
+     * `candidatesStart == candidatesEnd`, so [handleCursorUpdate] returns early
+     * and the native composition survives. The editor is now empty while Rime
+     * still holds the typed input; the schema binds `Return: commit_raw_input`,
+     * so the next Return would commit that stale input back into the box.
+     *
+     * Detection is deliberately conservative:
+     *  - only a collapsed new selection is considered; a caret that was moved as
+     *    part of a range selection is left to the framework;
+     *  - only a *backward* move can be external: our own commits (`commitText`)
+     *    and candidate selection always move the caret forward, so normal
+     *    commits cannot be mistaken for an external edit;
+     *  - a jump to position 0 (empty box) is always accepted; elsewhere a large
+     *    backward jump is required, which filters ordinary one-character
+     *    backspace;
+     *  - the rime job rechecks the editor session, the last reported selection
+     *    and the composition snapshot, so a stale callback or a key that won
+     *    the race cannot clear the newer composition. This extends the
+     *    [cursorUpdateIndex] protection used by [handleCursorUpdate] instead of
+     *    invalidating the clear on any unrelated selection callback.
+     *
+     * Not covered: an editor that was already empty and is cleared again does
+     * not change the selection at all, so no callback is delivered. A host-side
+     * "send" with an empty composer is indistinguishable from doing nothing.
+     */
+    private fun handleExternalEditorEdit(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+    ) {
+        if (newSelStart != newSelEnd) return
+        // A selection collapse or a deletion can also reduce oldSelEnd; count
+        // both start and end regression and keep the larger one.
+        val backward = maxOf(oldSelStart - newSelStart, oldSelEnd - newSelEnd)
+        if (backward <= 0) return
+        val toStart = newSelStart == 0
+        val composing = isRimeComposing
+        if (!toStart && (!composing || backward < EXTERNAL_EDIT_MIN_BACKWARD)) return
+        Timber.d("handleExternalEditorEdit: backward jump $oldSelStart..$oldSelEnd -> $newSelStart..$newSelEnd, composing=$composing")
+        inputView?.onEditorClearedExternally()
+        if (!composing) return
+        // Snapshot what the clear is allowed to touch. If a key job won the
+        // race and grew a newer composition before this job runs, clearing
+        // would eat the user's fresh input.
+        val sessionId = inputSessionId
+        val compositionAtDetection = if (::rime.isInitialized) rime.run { compositionCached } else null
+        postRimeJob {
+            if (sessionId != inputSessionId) return@postRimeJob
+            if (lastSelectionStart != newSelStart || lastSelectionEnd != newSelEnd) return@postRimeJob
+            if (!statusCached.isComposing) return@postRimeJob
+            if (compositionAtDetection != null && rime.run { compositionCached } != compositionAtDetection) {
+                Timber.d("handleExternalEditorEdit: composition moved on, keep it")
+                return@postRimeJob
+            }
+            Timber.d("handleExternalEditorEdit: drop stale composition after external edit")
+            clearComposition()
+        }
     }
 
     private fun handleCursorUpdate(
@@ -1206,3 +1277,10 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
  * forwarded with the modifier keys. Caps Lock or Num Lock alone is not.
  */
 internal fun KeyModifiers.isReturnChord(): Boolean = shift || ctrl || alt || meta
+
+/**
+ * Smallest backward selection jump (in characters) treated as an external text
+ * edit while Rime is composing. A plain backspace moves the caret by one; a
+ * host that clears its input box usually jumps by the whole message length.
+ */
+private const val EXTERNAL_EDIT_MIN_BACKWARD = 8

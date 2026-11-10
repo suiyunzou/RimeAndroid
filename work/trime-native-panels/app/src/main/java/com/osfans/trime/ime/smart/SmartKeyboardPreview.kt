@@ -142,7 +142,7 @@ class SmartKeyboardPreview(context: Context) : View(context) {
         val baseline = rect.centerY() - (paint.ascent()+paint.descent())/2
         paint.getTextBounds(label, 0, label.length, labelInk)
         val labelTop = if (label.isEmpty()) Float.POSITIVE_INFINITY else baseline + labelInk.top
-        if (key == "enter") ReferenceReturnIcon.draw(canvas,rect.centerX(),rect.centerY(),minOf(dp(32f),rect.width()*.7f,rect.height()*.76f),ink)
+        if (key == "enter") ReferenceReturnIcon.draw(canvas,rect.centerX(),rect.centerY(),minOf(dp(29f),rect.width()*.7f,rect.height()*.76f),ink)
         else canvas.drawText(label,rect.centerX(),baseline,paint)
         if (key == "space") {
             paint.textSize=dp(12f);paint.textAlign=Paint.Align.RIGHT
