@@ -5,6 +5,7 @@
 
 package com.osfans.trime.core
 
+import com.osfans.trime.ime.smart.TailCompletion
 import kotlinx.coroutines.flow.SharedFlow
 
 interface RimeApi {
@@ -99,5 +100,16 @@ interface RimeApi {
     suspend fun getCandidatesIfCurrent(startIndex: Int, limit: Int, expected: CandidateContext): Array<CandidateProto>? =
         if (expected.matches(compositionCached, schemaCached.schemaId)) getCandidates(startIndex, limit) else null
 
+    suspend fun findTailCompletion(
+        expected: CandidateContext,
+        prior: Map<String, Int>,
+        primary: Array<String>,
+        isCurrent: () -> Boolean,
+    ): TailCompletion.Suggestion?
+    suspend fun commitTailCompletion(
+        expected: CandidateContext,
+        suggestion: TailCompletion.Suggestion,
+        isCurrent: () -> Boolean,
+    ): Boolean
     suspend fun setCandidatePagingMode(enabled: Boolean)
 }

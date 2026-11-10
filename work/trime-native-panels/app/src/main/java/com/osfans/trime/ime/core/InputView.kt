@@ -11,6 +11,7 @@ import android.graphics.Canvas
 import android.graphics.Path
 import android.graphics.RectF
 import android.os.Build
+import android.text.InputType
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
@@ -27,6 +28,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.core.Candidates
+import com.osfans.trime.BuildConfig
 import com.osfans.trime.core.CompositionProto
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.daemon.RimeSession
@@ -47,11 +49,15 @@ import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.popup.PopupDelegate
 import com.osfans.trime.ime.screenshot.ScreenshotChipController
+import com.osfans.trime.ime.smart.OfflinePrivacyPolicy
+import com.osfans.trime.ime.smart.TailCompletionController
+import com.osfans.trime.ime.smart.TailCompletionNative
 import com.osfans.trime.ime.symbol.LiquidWindow
 import com.osfans.trime.ime.voice.OfflineVoiceManager
 import com.osfans.trime.ime.voice.VoicePanelView
 import com.osfans.trime.ime.voice.VoiceUiController
 import com.osfans.trime.ime.window.BoardWindowManager
+import com.osfans.trime.ime.window.BoardWindow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.kodein.di.DI
@@ -157,6 +163,17 @@ class InputView(
     private val compactCandidates: CompactCandidateDelegate by instance()
 
     private val candidatesMode by AppPrefs.defaultInstance().candidates.mode
+    private val tailCompletionTest by AppPrefs.defaultInstance().keyboard.tailCompletionTest
+    private var tailCompletionEditor = false
+    private val tailCompletion = TailCompletionController(
+        service, service.lifecycleScope, rime,
+        enabled = {
+            BuildConfig.DEBUG && tailCompletionTest && tailCompletionEditor &&
+                !OfflinePrivacyPolicy.sensitiveEditor && TailCompletionNative.available &&
+                windowManager.isAttached(keyboardWindow)
+        },
+        render = { text, action -> preedit.ui.showTailSuggestion(text, action) },
+    )
 
     private val keyboardSidePadding = theme.style.keyboardPadding
     private val keyboardSidePaddingLandscape = theme.style.keyboardPaddingLand
@@ -235,6 +252,11 @@ class InputView(
         // MUST call before any operation
         val receivers: List<InputBroadcastReceiver> by allInstances()
         receivers.forEach { broadcaster.addReceiver(it) }
+        broadcaster.addReceiver(object : InputBroadcastReceiver {
+            override fun onWindowDetached(window: BoardWindow) {
+                if (window === keyboardWindow) tailCompletion.clear()
+            }
+        })
 
         voiceUi.applyTheme(scope)
         // Extract the offline ASR model while the user types, so the first
@@ -453,6 +475,14 @@ class InputView(
     ) {
         // A new editor never inherits the previous editor's idle suppression.
         suppressIdleCandidates = false
+        tailCompletion.clear()
+        tailCompletionEditor = info.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
+            info.inputType and InputType.TYPE_MASK_VARIATION in setOf(
+                InputType.TYPE_TEXT_VARIATION_NORMAL,
+                InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE,
+                InputType.TYPE_TEXT_VARIATION_LONG_MESSAGE,
+            ) && info.imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII == 0 &&
+            info.inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0
         updateEnterKeyLabel(info)
         broadcaster.onStartInput(info, restarting)
         screenshotChip.onKeyboardShown()
@@ -463,6 +493,8 @@ class InputView(
 
     /** Keyboard dismissed: stop listening and drop the screenshot shortcut. */
     fun onKeyboardHidden() {
+        tailCompletionEditor = false
+        tailCompletion.clear()
         voiceUi.onKeyboardHidden()
         screenshotChip.onKeyboardHidden()
     }
@@ -490,6 +522,7 @@ class InputView(
     override fun handleRimeMessage(it: RimeMessage<*>) {
         when (it) {
             is RimeMessage.SchemaMessage -> {
+                tailCompletion.clear()
                 broadcaster.onRimeSchemaUpdated(it.data)
 
                 windowManager.attachWindow(KeyboardWindow)
@@ -509,6 +542,7 @@ class InputView(
             is RimeMessage.StatusMessage -> broadcaster.onInputStatusUpdate(it.data)
 
             is RimeMessage.CompositionMessage -> {
+                tailCompletion.clear()
                 val data = if (candidatesMode == PopupCandidatesMode.ALWAYS_SHOW) {
                     CompositionProto()
                 } else {
@@ -527,6 +561,7 @@ class InputView(
                 } else {
                     it.context?.let { context -> compactCandidates.updateCandidates(it.data, context) }
                     broadcaster.onCandidateListUpdate(it.data)
+                    tailCompletion.update(it.context, it.data.candidates)
                     if (it.data.candidates.isNotEmpty()) suppressIdleCandidates = false
                 }
             }
@@ -557,6 +592,7 @@ class InputView(
      * not cleared, so nothing can desynchronize the engine.
      */
     fun onEditorClearedExternally() {
+        tailCompletion.clear()
         suppressIdleCandidates = true
         compactCandidates.hideShownCandidates()
         broadcaster.onCandidateListUpdate(emptyCandidates)
@@ -579,6 +615,8 @@ class InputView(
     fun handleInlineSuggestions(response: InlineSuggestionsResponse): Boolean = inputBar.handleInlineSuggestions(response)
 
     override fun onDetachedFromWindow() {
+        tailCompletionEditor = false
+        tailCompletion.clear()
         ViewCompat.setOnApplyWindowInsetsListener(this, null)
         // cancel the notification job and clear all broadcast receivers,
         // implies that InputView should not be attached again after detached.

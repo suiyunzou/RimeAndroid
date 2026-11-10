@@ -202,6 +202,8 @@
     <string name="hide_input_bar">Hide input bar</string>
     <string name="hide_key_symbol">Hide key symbol</string>
     <string name="hide_key_hint">Hide key hint</string>
+    <string name="tail_completion_test">Pinyin tail completion (test)</string>
+    <string name="tail_completion_suggestion">Complete · %1$s</string>
     <string name="navbar_bkg_none">No background</string>
     <string name="navbar_bkg_color_only">Follow keyboard color</string>
     <string name="navbar_bkg_full">Keyboard background image</string>

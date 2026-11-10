@@ -202,6 +202,8 @@
     <string name="hide_input_bar">隱藏輸入工具欄</string>
     <string name="hide_key_symbol">隱藏按鍵符號</string>
     <string name="hide_key_hint">隱藏按鍵註解</string>
+    <string name="tail_completion_test">全拼尾音節補全（測試）</string>
+    <string name="tail_completion_suggestion">補全 · %1$s</string>
     <string name="navbar_bkg_none">無背景</string>
     <string name="navbar_bkg_color_only">跟隨鍵盤背景色</string>
     <string name="navbar_bkg_full">鍵盤背景圖片</string>

@@ -11,6 +11,9 @@ import com.osfans.trime.core.data.UserDataManager
 import com.osfans.trime.data.opencc.OpenCCDictManager
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.ime.core.InlinePreeditMode
+import com.osfans.trime.ime.smart.OfflinePrivacyPolicy
+import com.osfans.trime.ime.smart.TailCompletion
+import com.osfans.trime.ime.smart.TailCompletionNative
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -286,6 +289,46 @@ class Rime :
 
     override suspend fun getCandidatesIfCurrent(startIndex: Int, limit: Int, expected: CandidateContext): Array<CandidateProto>? = withRimeContext {
         if (!expected.matches(compositionCached, schemaCached.schemaId)) null else getRimeCandidates(startIndex, limit)
+    }
+
+    private fun tailCompletionContext(expected: CandidateContext): ContextProto? {
+        val status = getRimeStatus()
+        if (status.schemaId != TailCompletion.SCHEMA || status.isAsciiMode || !status.isComposing ||
+            OfflinePrivacyPolicy.sensitiveEditor || !expected.matches(compositionCached, status.schemaId)
+        ) return null
+        return getRimeContext()
+    }
+
+    override suspend fun findTailCompletion(
+        expected: CandidateContext,
+        prior: Map<String, Int>,
+        primary: Array<String>,
+        isCurrent: () -> Boolean,
+    ): TailCompletion.Suggestion? = withRimeContext {
+        if (!isCurrent()) return@withRimeContext null
+        val context = tailCompletionContext(expected) ?: return@withRimeContext null
+        TailCompletion.find(
+            context.input, context.composition.preedit, context.caretPos, prior, primary,
+            getRimeOption("traditionalization"),
+        )
+    }
+
+    override suspend fun commitTailCompletion(
+        expected: CandidateContext,
+        suggestion: TailCompletion.Suggestion,
+        isCurrent: () -> Boolean,
+    ): Boolean = withRimeContext {
+        if (!isCurrent()) return@withRimeContext false
+        val context = tailCompletionContext(expected) ?: return@withRimeContext false
+        if (context.input != suggestion.input ||
+            !TailCompletion.isInputEligible(context.input, context.composition.preedit, context.caretPos) ||
+            !isCurrent()
+        ) return@withRimeContext false
+        // Only an explicit tap may replace the composition. Do not inject a
+        // synthetic spelling or train the main session on those untyped keys.
+        clearRimeComposition()
+        emitResponse(CommitProto(suggestion.text))
+        true
     }
 
     override suspend fun setCandidatePagingMode(enabled: Boolean) = withRimeContext {
@@ -634,6 +677,7 @@ class Rime :
             type: Int,
             params: Array<Any>,
         ) {
+            if (TailCompletionNative.suppressNotification(type)) return
             val message = RimeMessage.nativeCreate(type, params)
             rimeMessageHandlers.forEach { it.invoke(message) }
             messageFlow_.tryEmit(message)

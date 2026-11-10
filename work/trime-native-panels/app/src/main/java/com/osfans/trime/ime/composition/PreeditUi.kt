@@ -6,13 +6,18 @@
 package com.osfans.trime.ime.composition
 
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.text.Spanned
+import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.text.buildSpannedString
+import androidx.core.graphics.ColorUtils
+import com.osfans.trime.R
 import com.osfans.trime.core.CompositionProto
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
@@ -23,6 +28,7 @@ import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.view
+import splitties.dimensions.dp
 
 open class PreeditUi(
     final override val ctx: Context,
@@ -51,6 +57,19 @@ open class PreeditUi(
             onMoveCursor = this@PreeditUi.onMoveCursor
         }
 
+    private val tailSuggestion = TextView(ctx).apply {
+        visibility = View.GONE
+        includeFontPadding = false
+        gravity = Gravity.CENTER
+        textSize = 12f
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        maxWidth = ctx.dp(160)
+        setPadding(ctx.dp(7), 0, ctx.dp(7), 0)
+        isFocusable = true
+        refreshTailColors(this)
+    }
+
     override val root =
         object : LinearLayout(ctx) {
             override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean = false
@@ -60,10 +79,31 @@ open class PreeditUi(
                 orientation = HORIZONTAL
                 if (theme.isIosStyle) {
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    add(preedit, lParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+                    addView(preedit, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
                 } else add(preedit, lParams())
+                addView(tailSuggestion, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
             }
         }
+
+    fun showTailSuggestion(text: String?, action: (() -> Unit)?) = tailSuggestion.run {
+        if (text == null || action == null) {
+            visibility = View.GONE
+            setOnClickListener(null)
+            this.text = ""
+        } else {
+            this.text = ctx.getString(R.string.tail_completion_suggestion, text)
+            setOnClickListener { action() }
+            visibility = View.VISIBLE
+        }
+    }
+
+    private fun refreshTailColors(view: TextView) {
+        view.setTextColor(highlightTextColor)
+        view.background = GradientDrawable().apply {
+            cornerRadius = ctx.dp(5).toFloat()
+            setColor(ColorUtils.setAlphaComponent(highlightTextColor, 25))
+        }
+    }
 
     private fun CompositionProto.toSpannedString() = buildSpannedString {
         if (!preedit.isNullOrEmpty()) {
@@ -78,6 +118,7 @@ open class PreeditUi(
     /** Re-applies the text color after a scheme switch. */
     fun refreshColors() {
         preedit.setTextColor(textColor)
+        refreshTailColors(tailSuggestion)
     }
 
     private fun updateTextView(

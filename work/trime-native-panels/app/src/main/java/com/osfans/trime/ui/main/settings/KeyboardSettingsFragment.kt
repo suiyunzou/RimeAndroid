@@ -6,7 +6,9 @@
 package com.osfans.trime.ui.main.settings
 
 import androidx.lifecycle.lifecycleScope
+import com.osfans.trime.BuildConfig
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.ime.smart.TailCompletionNative
 import com.osfans.trime.ui.settingskit.DelegateSettingsPageFragment
 import kotlinx.coroutines.launch
 
@@ -74,7 +76,11 @@ class KeyboardSettingsFragment : DelegateSettingsPageFragment(AppPrefs.defaultIn
                     AppPrefs.Keyboard.HOOK_SHIFT_ARROW,
                 ),
             ),
-        )
+        ) + if (BuildConfig.DEBUG && TailCompletionNative.available) {
+            listOf(Section("测试功能", listOf(AppPrefs.Keyboard.TAIL_COMPLETION_TEST)))
+        } else {
+            emptyList()
+        }
 
     override fun customClick(key: String): (() -> Unit)? =
         if (key == AppPrefs.Keyboard.CUSTOM_SOUND_EFFECT) {
