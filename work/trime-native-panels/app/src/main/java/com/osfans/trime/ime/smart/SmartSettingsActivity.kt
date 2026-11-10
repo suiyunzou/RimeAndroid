@@ -7,7 +7,6 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.Canvas
@@ -31,14 +30,19 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.data.prefs.SmartSettingsFacade
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.core.data.DataManager
+import com.osfans.trime.ui.main.MainActivity
+import com.osfans.trime.ui.main.NavigationRoute
+import com.osfans.trime.ui.settingskit.Palette
+import com.osfans.trime.ui.settingskit.SettingsBuilder
+import com.osfans.trime.ui.settingskit.SettingsPalette
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +60,8 @@ class SmartSettingsActivity : Activity() {
     private val extra by lazy { getSharedPreferences("smart_input",MODE_PRIVATE) }
     private lateinit var root: LinearLayout
     private lateinit var body: LinearLayout
+    private lateinit var builder:SettingsBuilder
+    private lateinit var facade:SmartSettingsFacade
     private var page="home"
     private var renderedPage="home"
     private var pageScrollView:ScrollView?=null
@@ -69,19 +75,21 @@ class SmartSettingsActivity : Activity() {
     private var heightExpanded=false
     private val activityScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var dark=false
-    private val ink get()=if(dark)Color.WHITE else 0xff111111.toInt()
-    private val muted get()=if(dark)0xff929296.toInt() else 0xff818186.toInt()
-    private val backgroundColor get()=if(dark)Color.BLACK else 0xfff2f2f6.toInt()
-    private val groupColor get()=if(dark)0xff262628.toInt() else Color.WHITE
-    private val selectedColor get()=if(dark)0xff56565a.toInt() else Color.WHITE
-    private val trackColor get()=if(dark)0xff363639.toInt() else 0xffe4e4e9.toInt()
-    private fun dp(v:Int)=(v*resources.displayMetrics.density+0.5f).toInt()
-    private fun rounded(color:Int,radius:Int=22)=GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat()}
+    private val palette get():Palette=builder.palette
+    private val ink get()=palette.ink
+    private val muted get()=palette.muted
+    private val backgroundColor get()=palette.background
+    private val groupColor get()=palette.group
+    private val selectedColor get()=palette.selected
+    private val trackColor get()=palette.track
+    private fun dp(v:Int)=SettingsPalette.dp(this,v)
+    private fun rounded(color:Int,radius:Int=SettingsPalette.RADIUS_GROUP)=GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat()}
     private fun text(value:String,size:Float=18f,color:Int=ink)=TextView(this).apply{text=value;textSize=size;setTextColor(color);gravity=Gravity.CENTER_VERTICAL}
     override fun onCreate(state:Bundle?){
         setTheme(android.R.style.Theme_Material_NoActionBar)
         super.onCreate(state)
         prefs=SmartInputPrefs(this)
+        facade=SmartSettingsFacade.fromDefault(this)
         page=state?.getString("page")?:intent.getStringExtra("page")?:"home"
         wheelTab=state?.getInt("wheelTab")?:0
         gestureUp=state?.getBoolean("gestureUp")?:false
@@ -110,14 +118,22 @@ class SmartSettingsActivity : Activity() {
     override fun onBackPressed(){if(page=="home")finish() else open("home")}
     private fun open(next:String){page=next;render()}
     private fun savePageScroll(){pageScrollView?.takeIf{it.parent!=null}?.let{pageScrollPositions[renderedPage]=it.scrollY}}
-    private fun selectedUiMode():AppPrefs.Advanced.UiMode=when(extra.getString("reference_settings_theme","light")){"dark"->AppPrefs.Advanced.UiMode.DARK;"auto"->AppPrefs.Advanced.UiMode.AUTO;else->AppPrefs.Advanced.UiMode.LIGHT}
+    // Light/dark has one authoritative source: AppPrefs.Advanced.uiMode, reached through the
+    // facade. The old smart_input.reference_settings_theme copy is no longer read or written.
+    private fun selectedUiMode():AppPrefs.Advanced.UiMode=facade.uiMode()
+    private fun setUiMode(mode:AppPrefs.Advanced.UiMode){
+        facade.setUiMode(mode)
+        AppCompatDelegate.setDefaultNightMode(when(mode){AppPrefs.Advanced.UiMode.DARK->AppCompatDelegate.MODE_NIGHT_YES;AppPrefs.Advanced.UiMode.LIGHT->AppCompatDelegate.MODE_NIGHT_NO;else->AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM})
+        applyKeyboardAppearance(when(mode){AppPrefs.Advanced.UiMode.LIGHT->1;AppPrefs.Advanced.UiMode.DARK->2;else->0})
+    }
+    private fun resolvedDark(mode:AppPrefs.Advanced.UiMode):Boolean=when(mode){AppPrefs.Advanced.UiMode.DARK->true;AppPrefs.Advanced.UiMode.LIGHT->false;else->resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK==Configuration.UI_MODE_NIGHT_YES}
     @Suppress("DEPRECATION")
     private fun render(){
         savePageScroll()
-        val mode=selectedUiMode()
-        dark=when(mode){AppPrefs.Advanced.UiMode.DARK->true;AppPrefs.Advanced.UiMode.LIGHT->false;else->resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK==Configuration.UI_MODE_NIGHT_YES}
+        dark=resolvedDark(selectedUiMode())
         window.statusBarColor=backgroundColor;window.navigationBarColor=backgroundColor
         window.decorView.systemUiVisibility=if(!dark && Build.VERSION.SDK_INT>=26) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
+        builder=SettingsBuilder(this,dark);body=builder.body
         root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(backgroundColor);fitsSystemWindows=true}
         setContentView(root)
         val heading=when(page){"display"->"显示";"keys"->"按键";"wheel"->"空格轮盘";"input"->"输入";else->"同文输入法"}
@@ -128,32 +144,18 @@ class SmartSettingsActivity : Activity() {
         if(page=="wheel")top.addView(text("↶",27f).apply{gravity=Gravity.CENTER;background=rounded(trackColor,22);contentDescription="恢复默认轮盘";setOnClickListener{prefs.wheelSlots=listOf("time","traditional","symbols","clipboard","settings");prefs.wheelStyle="rainbow";render()}},FrameLayout.LayoutParams(dp(42),dp(42),Gravity.END or Gravity.CENTER_VERTICAL))
         root.addView(top,LinearLayout.LayoutParams(-1,dp(58)))
         val scroll=ScrollView(this).apply{isFillViewport=true;clipToPadding=false;setPadding(dp(16),dp(7),dp(16),dp(24))}
-        body=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
         scroll.addView(body);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         when(page){"display"->displayPage();"keys"->keysPage();"wheel"->wheelPage();"input"->inputPage();else->homePage()}
         pageScrollView=scroll;renderedPage=page
         val position=pageScrollPositions[page]?:0
         scroll.post{if(pageScrollView===scroll && scroll.parent!=null)scroll.scrollTo(0,position)}
     }
-    private fun space(h:Int=16){body.addView(View(this),LinearLayout.LayoutParams(1,dp(h)))}
-    private fun section(title:String){body.addView(text(title,15f,muted).apply{setPadding(dp(16),dp(8),0,dp(8))})}
-    private fun group():LinearLayout=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=rounded(groupColor);clipToOutline=true;body.addView(this,LinearLayout.LayoutParams(-1,-2))}
-    private fun row(group:LinearLayout,title:String,value:String="",action:(()->Unit)?=null):LinearLayout{
-        val r=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),0,dp(14),0)}
-        r.addView(text(title,18f),LinearLayout.LayoutParams(0,dp(54),1f))
-        if(value.isNotEmpty())r.addView(text(value,17f,muted),LinearLayout.LayoutParams(-2,dp(54)))
-        if(action!=null){r.addView(text(" ›",24f,muted),LinearLayout.LayoutParams(dp(19),dp(54)));r.setOnClickListener{action()}}
-        group.addView(r);return r
-    }
-    private fun toggle(group:LinearLayout,title:String,value:Boolean,action:(Boolean)->Unit){
-        val r=row(group,title)
-        val control=Switch(this).apply{isChecked=value;showText=false;contentDescription=title;thumbTintList=ColorStateList.valueOf(Color.WHITE);trackTintList=ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked),intArrayOf()),intArrayOf(0xff30d958.toInt(),if(dark)0xff636366.toInt() else 0xffd1d1d6.toInt()));setOnCheckedChangeListener{_,checked->action(checked)}}
-        r.addView(control);r.setOnClickListener{control.isChecked=!control.isChecked}
-    }
-    private fun segments(labels:List<String>,selected:Int,onSelect:(Int)->Unit):LinearLayout=LinearLayout(this).apply{
-        gravity=Gravity.CENTER_VERTICAL;background=rounded(trackColor,22);setPadding(dp(3),dp(3),dp(3),dp(3))
-        labels.forEachIndexed{i,s->addView(text(s,14f,if(i==selected)ink else muted).apply{gravity=Gravity.CENTER;background=if(i==selected)rounded(selectedColor,19) else null;setOnClickListener{onSelect(i)}},LinearLayout.LayoutParams(0,dp(30),1f))}
-    }
+    private fun space(h:Int=16){builder.space(h)}
+    private fun section(title:String){builder.section(title)}
+    private fun group():LinearLayout=builder.group()
+    private fun row(group:LinearLayout?,title:String,value:String="",action:(()->Unit)?=null):LinearLayout=builder.row(group,title,value,action)
+    private fun toggle(group:LinearLayout?,title:String,value:Boolean,action:(Boolean)->Unit){builder.toggle(group,title,value,action)}
+    private fun segments(labels:List<String>,selected:Int,onSelect:(Int)->Unit):LinearLayout=builder.segments(labels,selected,onSelect)
     private fun preview(touch:((String)->Unit)?=null,up:Boolean?=null):SmartKeyboardPreview{
         val p=SmartKeyboardPreview(this).apply{dark=this@SmartSettingsActivity.dark;onKey=touch;gestureUp=up}
         p.keyboardBodyHeight=keyboardHeight();body.addView(p,LinearLayout.LayoutParams(-1,-2));return p
@@ -170,8 +172,16 @@ class SmartSettingsActivity : Activity() {
         homeCard("keys","按键","拨动输入的符号与功能",0xff19bcbf.toInt()){open("keys")}
         homeCard("wheel","空格轮盘","快捷功能与轮盘外观",0xffe19843.toInt()){open("wheel")}
         homeCard("feedback","声音与触感","试听音色与调节按键反馈",0xffd17e9c.toInt()){startActivity(Intent(this,FeedbackTuningActivity::class.java))}
-        homeCard("dictionary","词库","下载万象词库与添加自己的词条",0xff5c9a75.toInt()){startActivity(Intent(this,LocalDictionaryActivity::class.java))}
+        homeCard("dictionary","词库","下载万象词库与添加自己的词条",0xff5c9a75.toInt()){startActivity(Intent(this,WordLibraryActivity::class.java))}
+        homeCard("advanced","高级","方案、部署与数据备份",0xff7b8ea8.toInt()){openAdvancedSettings()}
         homeCard("privacy","隐私","离线运行与本地数据",0xff5d92be.toInt()){startActivity(Intent(this,OfflinePrivacyActivity::class.java))}
+    }
+    /** Hands the native Advanced page its route the same way AppUtils.launchMainToDest does. */
+    private fun openAdvancedSettings(){
+        startActivity(Intent(this,MainActivity::class.java).apply{
+            action=Intent.ACTION_RUN
+            putExtra(MainActivity.EXTRA_SETTINGS_ROUTE,NavigationRoute.Advanced as android.os.Parcelable)
+        })
     }
     private fun inputStatusCard(){
         val selected=Settings.Secure.getString(contentResolver,Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith("$packageName/")==true
@@ -214,6 +224,7 @@ class SmartSettingsActivity : Activity() {
                     "keys"->{pen.style=Paint.Style.STROKE;val finger=Path().apply{moveTo(17f,31f);lineTo(11f,22f);quadTo(9f,18f,13f,19f);lineTo(17f,23f);lineTo(15f,11f);quadTo(15f,7f,18f,9f);lineTo(21f,20f);quadTo(26f,15f,29f,22f);lineTo(31f,29f);quadTo(27f,36f,20f,33f);close()};canvas.drawPath(finger,pen);canvas.drawArc(RectF(8f,4f,25f,22f),170f,180f,false,pen)}
                     "feedback"->{pen.style=Paint.Style.STROKE;val speaker=Path().apply{moveTo(7f,16f);lineTo(13f,16f);lineTo(21f,9f);lineTo(21f,31f);lineTo(13f,24f);lineTo(7f,24f);close()};canvas.drawPath(speaker,pen);canvas.drawArc(RectF(19f,12f,31f,28f),-65f,130f,false,pen);canvas.drawArc(RectF(19f,7f,37f,33f),-65f,130f,false,pen)}
                     "dictionary"->{pen.style=Paint.Style.STROKE;canvas.drawRoundRect(RectF(9f,7f,31f,33f),3f,3f,pen);canvas.drawLine(14f,7f,14f,33f,pen);canvas.drawLine(19f,15f,27f,15f,pen);canvas.drawLine(19f,21f,27f,21f,pen)}
+                    "advanced"->{pen.style=Paint.Style.STROKE;canvas.drawCircle(20f,19f,7f,pen);for(i in 0..7){val angle=Math.toRadians(i*45.0);val cx=cos(angle).toFloat();val cy=sin(angle).toFloat();canvas.drawLine(20f+cx*9f,19f+cy*9f,20f+cx*13f,19f+cy*13f,pen)};canvas.drawCircle(20f,19f,2.6f,pen)}
                     "privacy"->{pen.style=Paint.Style.STROKE;val shield=Path().apply{moveTo(20f,6f);lineTo(32f,11f);lineTo(30f,24f);quadTo(28f,30f,20f,35f);quadTo(12f,30f,10f,24f);lineTo(8f,11f);close()};canvas.drawPath(shield,pen);canvas.drawLine(14f,20f,18f,24f,pen);canvas.drawLine(18f,24f,27f,15f,pen)}
                     else->{pen.style=Paint.Style.STROKE;canvas.drawArc(RectF(8f,12f,32f,36f),190f,160f,false,pen);pen.style=Paint.Style.FILL;canvas.drawCircle(20f,30f,2f,pen);for(i in 0..4){val angle=Math.toRadians(168.0-i*39.0);canvas.drawCircle(20f+16f*cos(angle).toFloat(),30f-16f*sin(angle).toFloat(),2f,pen)}}
                 }
@@ -253,8 +264,15 @@ class SmartSettingsActivity : Activity() {
         root.addView(keyboardPreview,LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(16),dp(7),dp(16),dp(10))})
         root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val g=group()
-        val candidate=row(g,"候选文字")
-        candidate.addView(segments(listOf("小","标准","大"),when(prefs.candidateSize){16->0;24,28,32->2;else->1}){prefs.candidateSize=listOf(16,20,24)[it];render()},LinearLayout.LayoutParams(dp(172),dp(36)))
+        // The builder's segments() attaches to body; this row needs the control inline,
+        // so an unattached track is built here and handed to rowWithControl instead.
+        val candidateCurrent=when(prefs.candidateSize){16->0;24,28,32->2;else->1}
+        val candidateTrack=LinearLayout(this).apply{
+            gravity=Gravity.CENTER_VERTICAL;background=rounded(trackColor,SettingsPalette.RADIUS_PILL);setPadding(dp(3),dp(3),dp(3),dp(3))
+            listOf("小","标准","大").forEachIndexed{i,s->addView(text(s,14f,if(i==candidateCurrent)ink else muted).apply{gravity=Gravity.CENTER;background=if(i==candidateCurrent)rounded(selectedColor,SettingsPalette.RADIUS_SEGMENT) else null;setOnClickListener{prefs.candidateSize=listOf(16,20,24)[i];render()}},LinearLayout.LayoutParams(0,dp(30),1f))}
+            layoutParams=LinearLayout.LayoutParams(dp(172),dp(36))
+        }
+        builder.rowWithControl(g,"候选文字",candidateTrack)
         toggle(g,"候选中显示表情",prefs.candidateEmoji){prefs.candidateEmoji=it;keyboardPreview.invalidate()}
         val displayPrefs=ReferenceDisplayPrefs(this)
         row(g,"键面文字",when(displayPrefs.keyTextSize){20->"小";28->"大";else->"标准"}){choose("键面文字",listOf("小","标准","大"),listOf(20,24,28).indexOf(displayPrefs.keyTextSize)){displayPrefs.keyTextSize=listOf(20,24,28)[it];render()}}
@@ -267,10 +285,7 @@ class SmartSettingsActivity : Activity() {
         row(theme,"键盘主题",if(ThemeManager.prefs.selectedTheme.getValue()=="rerime-reference.trime")"ios风格" else "原有主题"){selectKeyboardTheme()}
         row(theme,"主题",when(mode){AppPrefs.Advanced.UiMode.LIGHT->"浅色";AppPrefs.Advanced.UiMode.DARK->"深色";else->"跟随系统"}){
             choose("主题",listOf("跟随系统","浅色","深色"),when(mode){AppPrefs.Advanced.UiMode.LIGHT->1;AppPrefs.Advanced.UiMode.DARK->2;else->0}){ index->
-                extra.edit().putString("reference_settings_theme",listOf("auto","light","dark")[index]).apply()
-                AppPrefs.defaultInstance().advanced.uiMode.setValue(listOf(AppPrefs.Advanced.UiMode.AUTO,AppPrefs.Advanced.UiMode.LIGHT,AppPrefs.Advanced.UiMode.DARK)[index])
-                AppCompatDelegate.setDefaultNightMode(listOf(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM,AppCompatDelegate.MODE_NIGHT_NO,AppCompatDelegate.MODE_NIGHT_YES)[index])
-                applyKeyboardAppearance(index)
+                setUiMode(listOf(AppPrefs.Advanced.UiMode.AUTO,AppPrefs.Advanced.UiMode.LIGHT,AppPrefs.Advanced.UiMode.DARK)[index])
                 render()
             }
         }
@@ -281,7 +296,7 @@ class SmartSettingsActivity : Activity() {
         space();val icon=group();row(icon,"应用图标",iconName()){
             choose("应用图标",listOf("默认","蓝色","绿色"),listOf("默认","蓝色","绿色").indexOf(iconName()).coerceAtLeast(0)){if(!SmartIconSwitcher.select(this,listOf("default","blue","green")[it]))Toast.makeText(this,"图标切换失败",Toast.LENGTH_SHORT).show();render()}
         }
-        space(7);body.addView(text("预览随显示设置即时更新。应用图标由桌面刷新。",12f,muted).apply{setPadding(dp(14),0,dp(10),0)})
+        space(7);builder.note("预览随显示设置即时更新。应用图标由桌面刷新。")
     }
     private fun applyKeyboardAppearance(index:Int){
         val schemes=ThemeManager.activeTheme.presetColorSchemes

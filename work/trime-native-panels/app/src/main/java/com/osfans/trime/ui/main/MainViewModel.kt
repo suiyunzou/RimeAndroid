@@ -8,6 +8,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.daemon.RimeSession
+import com.osfans.trime.daemon.launchOnReady
 
 class MainViewModel : ViewModel() {
     val toolbarTitle = MutableLiveData<String>()
@@ -63,6 +64,17 @@ class MainViewModel : ViewModel() {
 
     fun disableToolbarDeleteButton() {
         toolbarDeleteButtonOnClickListener.value = null
+    }
+
+    /**
+     * The single entry point for "deploy".
+     *
+     * Both the toolbar action of [MainActivity] and the 「部署」 row of the 「高级」 page call this,
+     * so the two stay identical: fire the deploy once Rime is ready, and never block the caller.
+     * This is exactly what the toolbar did inline before the advanced page started offering deploy.
+     */
+    fun deploy() {
+        rime.launchOnReady { it.deploy() }
     }
 
     override fun onCleared() {

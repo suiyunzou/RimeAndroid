@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="advanced_group_scheme_deploy_backup">Scheme, deploy &amp; backup</string>
+    <string name="advanced_entry_scheme">Input scheme</string>
+    <string name="advanced_entry_scheme_summary">Choose and enable an input scheme</string>
+    <string name="advanced_entry_deploy_summary">Regenerate input configuration and dictionaries</string>
+    <string name="advanced_entry_backup">Data folder and backup</string>
+    <string name="advanced_entry_backup_summary">Choose the user data folder, sync and restore</string>
+    <string name="advanced_entry_word_library">Dictionary updates</string>
+    <string name="advanced_entry_word_library_summary">Public pack versions and updates (coming soon)</string>
+</resources>

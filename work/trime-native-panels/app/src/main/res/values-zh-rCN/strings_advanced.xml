@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="advanced_group_scheme_deploy_backup">方案、部署与备份</string>
+    <string name="advanced_entry_scheme">输入方案</string>
+    <string name="advanced_entry_scheme_summary">选择并启用输入方案</string>
+    <string name="advanced_entry_deploy_summary">重新生成输入法配置与词库</string>
+    <string name="advanced_entry_backup">数据目录与备份</string>
+    <string name="advanced_entry_backup_summary">选择用户数据目录、同步与恢复数据</string>
+    <string name="advanced_entry_word_library">词库更新数据</string>
+    <string name="advanced_entry_word_library_summary">公开词包版本与更新（即将推出）</string>
+</resources>
