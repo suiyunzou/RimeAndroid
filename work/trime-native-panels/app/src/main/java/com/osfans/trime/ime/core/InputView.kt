@@ -6,12 +6,14 @@
 package com.osfans.trime.ime.core
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Path
 import android.graphics.RectF
 import android.os.Build
 import android.view.ContextThemeWrapper
 import android.view.View
+import android.view.ViewGroup
 import android.view.MotionEvent
 import android.view.Gravity
 import android.widget.TextView
@@ -44,7 +46,11 @@ import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.popup.PopupDelegate
+import com.osfans.trime.ime.screenshot.ScreenshotChipController
 import com.osfans.trime.ime.symbol.LiquidWindow
+import com.osfans.trime.ime.voice.OfflineVoiceManager
+import com.osfans.trime.ime.voice.VoicePanelView
+import com.osfans.trime.ime.voice.VoiceUiController
 import com.osfans.trime.ime.window.BoardWindowManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -186,6 +192,14 @@ class InputView(
 
     val keyboardView: View
 
+    private val voicePanel = VoicePanelView(themedContext)
+
+    /** Microphone key entry point; also drives the listening overlay. */
+    val voiceUi = VoiceUiController(service, voicePanel)
+
+    /** Shows the 「发送图片」 chip after the user takes a screenshot. */
+    private val screenshotChip = ScreenshotChipController()
+
     /** Clip the keyboard surface itself; rounding a child leaves the background corners square. */
     private inner class KeyboardSurface : androidx.constraintlayout.widget.ConstraintLayout(themedContext) {
         private val topClip = Path()
@@ -213,12 +227,19 @@ class InputView(
         inputBar.refreshColors()
         preedit.refreshColors()
         windowManager.refreshColors()
+        voiceUi.applyTheme(scope)
+        screenshotChip.refreshColors()
     }
 
     init {
         // MUST call before any operation
         val receivers: List<InputBroadcastReceiver> by allInstances()
         receivers.forEach { broadcaster.addReceiver(it) }
+
+        voiceUi.applyTheme(scope)
+        // Extract the offline ASR model while the user types, so the first
+        // microphone tap does not wait for ~180 MB of asset copying.
+        OfflineVoiceManager.preload(service)
 
         windowManager.cacheResidentWindow(keyboardWindow, createView = true)
         windowManager.cacheResidentWindow(liquidWindow)
@@ -282,6 +303,15 @@ class InputView(
                         bottomOfParent()
                     },
                 )
+                // Listening overlay: sits above the keys so the toolbar row stays
+                // visible, exactly like the reference recording panel.
+                add(
+                    voicePanel,
+                    lParams(matchParent, 0) {
+                        below(inputBar.view)
+                        bottomOfParent()
+                    },
+                )
             }
 
         if (theme.isIosStyle) {
@@ -329,6 +359,10 @@ class InputView(
                 centerInParent()
             },
         )
+        // Screenshot shortcut: pinned to the top-left header strip of the IME
+        // window, above the keys.
+        screenshotChip.onPermissionRequired = { requestScreenshotPermissionOnce() }
+        screenshotChip.attach(service, keyboardView as ViewGroup)
         val loading = TextView(themedContext).apply {
             text = "正在切换模型…"; textSize = 17f; gravity = Gravity.CENTER
             setTextColor(scope.colors.keyTextColor)
@@ -402,8 +436,13 @@ class InputView(
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        val navInset = getNavBarBottomInset(insets)
         bottomPaddingSpace.updateLayoutParams<LayoutParams> {
-            bottomMargin = getNavBarBottomInset(insets)
+            bottomMargin = navInset
+        }
+        // Keep the listening sheet (and its microphone) above the gesture bar.
+        voicePanel.updateLayoutParams<LayoutParams> {
+            bottomMargin = navInset
         }
         return insets
     }
@@ -416,9 +455,32 @@ class InputView(
         suppressIdleCandidates = false
         updateEnterKeyLabel(info)
         broadcaster.onStartInput(info, restarting)
+        screenshotChip.onKeyboardShown()
         if (!restarting) {
             windowManager.attachWindow(KeyboardWindow)
         }
+    }
+
+    /** Keyboard dismissed: stop listening and drop the screenshot shortcut. */
+    fun onKeyboardHidden() {
+        voiceUi.onKeyboardHidden()
+        screenshotChip.onKeyboardHidden()
+    }
+
+    /**
+     * Asks for the gallery read permission once per install. The request must
+     * come from an activity, so [ScreenshotChipController] starts the
+     * transparent one; the IME service only supplies the flag guard.
+     */
+    private fun requestScreenshotPermissionOnce() {
+        if (!screenshotChip.needsPermission) return
+        val prefs = service.getSharedPreferences("screenshot_send", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("permission_requested", false)) return
+        prefs.edit().putBoolean("permission_requested", true).apply()
+        screenshotChip.requestPermission(service)
+        // The permission activity briefly takes focus and hides the IME; ask the
+        // system for the keyboard back so the user can keep typing afterwards.
+        keyboardView.postDelayed({ runCatching { service.requestShowSelf(0) } }, 1_500)
     }
 
     fun updateEnterKeyLabel(info: EditorInfo) {
@@ -522,6 +584,8 @@ class InputView(
         // implies that InputView should not be attached again after detached.
         updateWindowViewHeightJob.cancel()
         modelReloadJob.cancel()
+        voiceUi.release()
+        screenshotChip.detach()
         popup.root.removeAllViews()
         broadcaster.clear()
         super.onDetachedFromWindow()

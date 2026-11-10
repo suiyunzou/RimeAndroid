@@ -542,7 +542,23 @@ class KeyView(
                 paddingTop - fontMetrics.ascent,
                 height - paddingBottom - fontMetrics.descent,
             ) else centerY + adjustmentY + offsetY
-            canvas.drawText(label, x, baseline, textPaint)
+            // The shift arrow reads thin at key size: widen it a touch and
+            // double-stroke for a slightly bolder cut, iOS-style.
+            val widenShift = reference && label in setOf("⇧", "⇪")
+            if (widenShift) {
+                textPaint.isFakeBoldText = true
+                val glyphCheckpoint = canvas.save()
+                canvas.translate(x, baseline)
+                canvas.scale(1.15f, 1f)
+                canvas.translate(-x, -baseline)
+                canvas.drawText(label, x, baseline, textPaint)
+                canvas.translate(dp(0.75f), 0f)
+                canvas.drawText(label, x, baseline, textPaint)
+                canvas.restoreToCount(glyphCheckpoint)
+                textPaint.isFakeBoldText = false
+            } else {
+                canvas.drawText(label, x, baseline, textPaint)
+            }
             textPaint.getTextBounds(label, 0, label.length, labelInk)
             return baseline + labelInk.top
         }

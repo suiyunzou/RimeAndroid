@@ -1,47 +1,283 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.osfans.trime.ime.voice
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
-import android.widget.Toast
-import com.hjq.permissions.OnPermissionCallback
-import com.hjq.permissions.XXPermissions
-import com.k2fsa.sherpa.onnx.*
+import android.os.SystemClock
+import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.k2fsa.sherpa.onnx.OnlineModelConfig
+import com.k2fsa.sherpa.onnx.OnlineRecognizer
+import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OnlineStream
+import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import com.osfans.trime.ime.core.TrimeInputMethodService
-import kotlinx.coroutines.*
 import timber.log.Timber
+import java.io.File
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.sqrt
 
 /**
- * High-performance, 100% on-device offline ASR manager using Sherpa-ONNX.
- * Zero network requests, 100% private, physical-layer isolated.
+ * On-device streaming speech recognition with sherpa-onnx.
+ *
+ * All model loading, audio capture and decoding happen off the main thread.
+ * The recognizer is created from files extracted by [VoiceModelStore]; it is
+ * released when the keyboard hides so the IME does not sit on a few hundred
+ * megabytes of native memory while the user is typing.
  */
 object OfflineVoiceManager {
+    enum class State { IDLE, PREPARING, LISTENING, FINISHING }
 
-    private const val SAMPLE_RATE = 16000
-    private var recognizer: OnlineRecognizer? = null
-    private var recordingJob: Job? = null
-    private val isRecording = AtomicBoolean(false)
+    interface Listener {
+        fun onStateChanged(state: State)
+
+        fun onCaption(text: String)
+
+        fun onTranscript(text: String)
+
+        fun onAmplitude(level: Float)
+
+        fun onError(message: String)
+    }
+
+    private const val SAMPLE_RATE = 16_000
+    private const val MAX_SESSION_MS = 60_000L
+    private const val IDLE_RELEASE_MS = 120_000L
+    private const val SPEECH_THRESHOLD = 0.02f
+    private const val PAUSE_THRESHOLD = 0.012f
+
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val worker = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "trime-offline-voice").apply { isDaemon = true }
+    }
 
-    @Synchronized
-    private fun initRecognizer(context: Context): OnlineRecognizer? {
-        if (recognizer != null) return recognizer
+    @Volatile
+    private var state = State.IDLE
+
+    @Volatile
+    private var listener: Listener? = null
+
+    @Volatile
+    private var recognizer: OnlineRecognizer? = null
+
+    @Volatile
+    private var service: TrimeInputMethodService? = null
+
+    private val stopRequested = AtomicBoolean(false)
+    private val commitOnFinish = AtomicBoolean(true)
+    private val preloadStarted = AtomicBoolean(false)
+
+    private var lastAmplitudeAt = 0L
+    private var lastPartial = ""
+
+    private val idleRelease = Runnable {
+        worker.execute {
+            runCatching { recognizer?.release() }
+            recognizer = null
+        }
+    }
+
+    fun setListener(value: Listener?) {
+        listener = value
+    }
+
+    fun isBusy(): Boolean = state != State.IDLE
+
+    /**
+     * Copies the bundled model to app storage in the background so the first
+     * microphone tap does not wait for ~180 MB of asset extraction.
+     */
+    fun preload(context: android.content.Context) {
+        if (!preloadStarted.compareAndSet(false, true)) return
+        worker.execute {
+            if (VoiceModelStore.prepare(context) { } == null) preloadStarted.set(false)
+        }
+    }
+
+    fun toggle(service: TrimeInputMethodService) {
+        if (state == State.IDLE) start(service) else stop()
+    }
+
+    fun start(service: TrimeInputMethodService) {
+        if (state != State.IDLE) return
+        mainHandler.removeCallbacks(idleRelease)
+        this.service = service
+        stopRequested.set(false)
+        commitOnFinish.set(true)
+        lastPartial = ""
+        setState(State.PREPARING)
+        postCaption("正在准备离线语音模型…")
+        worker.execute { runSession(service) }
+    }
+
+    /** Ends the current session and commits the recognized text. */
+    fun stop() {
+        Timber.i("voice: stop requested (state=%s)", state)
+        if (state != State.IDLE) {
+            commitOnFinish.set(true)
+            stopRequested.set(true)
+        }
+    }
+
+    /** Ends the current session without committing anything. */
+    fun cancel() {
+        if (state != State.IDLE) {
+            commitOnFinish.set(false)
+            stopRequested.set(true)
+        }
+    }
+
+    /** Frees native memory; called when the keyboard hides. */
+    fun release() {
+        cancel()
+        // Queued behind a running session on the same worker, so a live decode
+        // never loses its native recognizer.
+        worker.execute {
+            runCatching { recognizer?.release() }
+            recognizer = null
+        }
+    }
+
+    private fun runSession(service: TrimeInputMethodService) {
+        var stream: OnlineStream? = null
+        var recorder: AudioRecord? = null
+        var finalText = ""
+        val startedAt = SystemClock.uptimeMillis()
         try {
+            val dir = VoiceModelStore.prepare(service) { percent ->
+                if (percent > 0 && percent % 10 == 0) postCaption("正在准备离线语音模型… $percent%")
+            }
+            if (dir == null) {
+                fail("离线语音模型不可用")
+                return
+            }
+            Timber.i("voice: model files ready in %d ms", SystemClock.uptimeMillis() - startedAt)
+            val engine = ensureRecognizer(dir)
+            if (engine == null) {
+                fail("离线语音模型加载失败")
+                return
+            }
+            Timber.i("voice: recognizer ready in %d ms", SystemClock.uptimeMillis() - startedAt)
+            if (stopRequested.get()) {
+                finishSession("")
+                return
+            }
+            stream = engine.createStream()
+            recorder = openRecorder()
+            if (recorder == null) {
+                fail("无法打开麦克风")
+                return
+            }
+            recorder.startRecording()
+            setState(State.LISTENING)
+            postCaption("正在聆听 · 点击麦克风结束")
+
+            val startedAt = SystemClock.uptimeMillis()
+            val shorts = ShortArray(1_600)
+            val floats = FloatArray(1_600)
+            val pausePrefixes = ArrayList<String>(4)
+            var speaking = false
+            while (!stopRequested.get() && SystemClock.uptimeMillis() - startedAt < MAX_SESSION_MS) {
+                val read = recorder.read(shorts, 0, shorts.size)
+                if (read <= 0) continue
+                var energy = 0.0
+                for (i in 0 until read) {
+                    val sample = shorts[i] / 32768.0f
+                    floats[i] = sample
+                    energy += sample * sample
+                }
+                val level = sqrt(energy / read).toFloat()
+                postAmplitude(level)
+                stream.acceptWaveform(floats.copyOf(read), SAMPLE_RATE)
+                while (engine.isReady(stream)) engine.decode(stream)
+                val partial = cleanText(engine.getResult(stream).text)
+                if (partial.isNotEmpty() && partial != lastPartial) {
+                    lastPartial = partial
+                    postTranscript(partial)
+                }
+                // A pause between phrases becomes a comma in the final text.
+                if (level > SPEECH_THRESHOLD) {
+                    speaking = true
+                } else if (speaking && level < PAUSE_THRESHOLD) {
+                    speaking = false
+                    val last = pausePrefixes.lastOrNull()
+                    if (partial.length >= 3 && partial != last && partial.length - (last?.length ?: 0) >= 3) {
+                        pausePrefixes.add(partial)
+                    }
+                }
+            }
+
+            setState(State.FINISHING)
+            postCaption("正在识别…")
+            stream.inputFinished()
+            while (engine.isReady(stream)) engine.decode(stream)
+            finalText = VoiceTextNormalizer.punctuate(
+                VoiceTextNormalizer.normalizeNumbers(cleanText(engine.getResult(stream).text)),
+                pausePrefixes,
+            )
+            Timber.i(
+                "voice: session finished in %d ms, %d chars",
+                SystemClock.uptimeMillis() - startedAt,
+                finalText.length,
+            )
+        } catch (e: Throwable) {
+            Timber.e(e, "Offline voice session failed")
+            fail("语音识别出错")
+            return
+        } finally {
+            runCatching {
+                recorder?.stop()
+                recorder?.release()
+            }
+            runCatching { stream?.release() }
+        }
+        finishSession(
+            finalText.ifEmpty {
+                VoiceTextNormalizer.punctuate(
+                    VoiceTextNormalizer.normalizeNumbers(lastPartial),
+                    emptyList(),
+                )
+            },
+        )
+    }
+
+    private fun finishSession(text: String) {
+        val shouldCommit = commitOnFinish.get()
+        val target = service
+        if (shouldCommit && text.isNotEmpty() && target != null) {
+            mainHandler.post {
+                if (target.currentInputConnection != null) target.commitText(text)
+            }
+        }
+        setState(State.IDLE)
+        if (text.isEmpty()) postCaption("没有听清，请再说一次") else postCaption("已输入")
+        service = null
+        mainHandler.removeCallbacks(idleRelease)
+        mainHandler.postDelayed(idleRelease, IDLE_RELEASE_MS)
+    }
+
+    private fun fail(message: String) {
+        setState(State.IDLE)
+        service = null
+        mainHandler.post { listener?.onError(message) }
+        mainHandler.removeCallbacks(idleRelease)
+        mainHandler.postDelayed(idleRelease, IDLE_RELEASE_MS)
+    }
+
+    private fun ensureRecognizer(dir: File): OnlineRecognizer? {
+        recognizer?.let { return it }
+        val engine = runCatching {
             val modelConfig = OnlineModelConfig().apply {
                 transducer = OnlineTransducerModelConfig().apply {
-                    encoder = "asr_model/encoder-epoch-99-avg-1.int8.onnx"
-                    decoder = "asr_model/decoder-epoch-99-avg-1.int8.onnx"
-                    joiner = "asr_model/joiner-epoch-99-avg-1.int8.onnx"
+                    encoder = VoiceModelStore.file(dir, "encoder-epoch-99-avg-1.int8.onnx")
+                    decoder = VoiceModelStore.file(dir, "decoder-epoch-99-avg-1.int8.onnx")
+                    joiner = VoiceModelStore.file(dir, "joiner-epoch-99-avg-1.int8.onnx")
                 }
-                tokens = "asr_model/tokens.txt"
-                bpeVocab = "asr_model/bpe.model"
+                tokens = VoiceModelStore.file(dir, "tokens.txt")
+                bpeVocab = VoiceModelStore.file(dir, "bpe.model")
                 modelType = "zipformer"
                 modelingUnit = "cjkchar+bpe"
                 numThreads = 2
@@ -49,140 +285,64 @@ object OfflineVoiceManager {
             }
             val config = OnlineRecognizerConfig().apply {
                 this.modelConfig = modelConfig
-                enableEndpoint = true
+                this.featConfig = FeatureConfig(SAMPLE_RATE, 80, 0f)
+                enableEndpoint = false
             }
-            recognizer = OnlineRecognizer(context.assets, config)
-            Timber.i("Sherpa-ONNX offline recognizer initialized successfully.")
-        } catch (e: Throwable) {
-            Timber.e(e, "Failed to initialize Sherpa-ONNX recognizer")
-        }
-        return recognizer
+            // A null AssetManager makes sherpa read the absolute model paths above.
+            OnlineRecognizer(null, config)
+        }.onFailure { Timber.e(it, "Failed to initialize sherpa-onnx recognizer") }.getOrNull()
+        recognizer = engine
+        return engine
     }
 
-    fun toggleListening(service: TrimeInputMethodService) {
-        if (isRecording.get()) {
-            stopListening(service)
-        } else {
-            startListeningWithPermission(service)
-        }
-    }
-
-    private fun startListeningWithPermission(service: TrimeInputMethodService) {
-        if (XXPermissions.isGranted(service, Manifest.permission.RECORD_AUDIO)) {
-            startListening(service)
-        } else {
-            XXPermissions.with(service)
-                .permission(Manifest.permission.RECORD_AUDIO)
-                .request(object : OnPermissionCallback {
-                    override fun onGranted(permissions: MutableList<String>, allGranted: Boolean) {
-                        if (allGranted) {
-                            startListening(service)
-                        } else {
-                            Toast.makeText(service, "请授予录音权限以使用离线语音输入", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-
-                    override fun onDenied(permissions: MutableList<String>, doNotAskAgain: Boolean) {
-                        Toast.makeText(service, "未授予录音权限，无法使用语音输入", Toast.LENGTH_SHORT).show()
-                    }
-                })
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun startListening(service: TrimeInputMethodService) {
-        if (isRecording.getAndSet(true)) return
-
-        val toast = Toast.makeText(service, "🎙️ 正在聆听 (完全离线·端侧识别)... 再次轻按结束", Toast.LENGTH_SHORT)
-        toast.show()
-
-        recordingJob = CoroutineScope(Dispatchers.Default).launch {
-            val rec = initRecognizer(service)
-            if (rec == null) {
-                mainHandler.post {
-                    Toast.makeText(service, "离线模型加载失败，请检查模型资源", Toast.LENGTH_SHORT).show()
-                }
-                isRecording.set(false)
-                return@launch
-            }
-
-            val bufferSize = AudioRecord.getMinBufferSize(
-                SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            ).coerceAtLeast(SAMPLE_RATE * 2)
-
-            var audioRecord: AudioRecord? = null
-            var stream: OnlineStream? = null
-
-            try {
-                audioRecord = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
+    @Suppress("MissingPermission")
+    private fun openRecorder(): AudioRecord? {
+        val minBuffer = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        ).coerceAtLeast(SAMPLE_RATE)
+        for (source in intArrayOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC)) {
+            val recorder = runCatching {
+                AudioRecord(
+                    source,
                     SAMPLE_RATE,
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT,
-                    bufferSize
+                    minBuffer * 2,
                 )
-
-                if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
-                    Timber.e("AudioRecord initialization failed")
-                    isRecording.set(false)
-                    return@launch
-                }
-
-                stream = rec.createStream()
-                audioRecord.startRecording()
-                val buffer = ShortArray(1024)
-                val floatBuffer = FloatArray(1024)
-                var lastText = ""
-
-                while (isRecording.get() && isActive) {
-                    val read = audioRecord.read(buffer, 0, buffer.size)
-                    if (read > 0) {
-                        for (i in 0 until read) {
-                            floatBuffer[i] = buffer[i] / 32768.0f
-                        }
-                        stream.acceptWaveform(floatBuffer.copyOfRange(0, read), SAMPLE_RATE)
-                        while (rec.isReady(stream)) {
-                            rec.decode(stream)
-                        }
-                        val text = rec.getResult(stream).text.trim()
-                        if (text.isNotEmpty() && text != lastText) {
-                            lastText = text
-                        }
-                    }
-                }
-
-                // Final decode
-                stream.inputFinished()
-                while (rec.isReady(stream)) {
-                    rec.decode(stream)
-                }
-                val finalText = rec.getResult(stream).text.trim()
-                if (finalText.isNotEmpty()) {
-                    mainHandler.post {
-                        service.commitText(finalText)
-                    }
-                }
-            } catch (e: Throwable) {
-                Timber.e(e, "Error during offline audio recognition")
-            } finally {
-                try {
-                    audioRecord?.stop()
-                    audioRecord?.release()
-                } catch (_: Exception) {}
-                try {
-                    stream?.release()
-                } catch (_: Exception) {}
-                isRecording.set(false)
-            }
+            }.getOrNull() ?: continue
+            if (recorder.state == AudioRecord.STATE_INITIALIZED) return recorder
+            recorder.release()
         }
+        return null
     }
 
-    fun stopListening(service: TrimeInputMethodService) {
-        if (!isRecording.getAndSet(false)) return
-        recordingJob?.cancel()
-        recordingJob = null
-        Toast.makeText(service, "语音已停止，正在上屏", Toast.LENGTH_SHORT).show()
+    /** Removes the spaces a sub-word tokenizer inserts between Chinese characters. */
+    private fun cleanText(raw: String): String =
+        raw.replace(Regex("(?<=[\\u4e00-\\u9fff])\\s+(?=[\\u4e00-\\u9fff])"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    private fun setState(value: State) {
+        if (state == value) return
+        state = value
+        mainHandler.post { listener?.onStateChanged(value) }
+    }
+
+    private fun postCaption(text: String) {
+        mainHandler.post { listener?.onCaption(text) }
+    }
+
+    private fun postTranscript(text: String) {
+        mainHandler.post { listener?.onTranscript(text) }
+    }
+
+    private fun postAmplitude(level: Float) {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAmplitudeAt < 50) return
+        lastAmplitudeAt = now
+        val normalized = (level * 10f).coerceIn(0f, 1f)
+        mainHandler.post { listener?.onAmplitude(normalized) }
     }
 }

@@ -203,35 +203,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupToolbarMenu(menu: Menu) {
-        val optionMenuItems = listOf(
-            menu.item(
-                R.string.deploy,
-                R.drawable.ic_baseline_refresh_reversed_24,
-                iconTint = headerPalette.ink,
-                showAsAction = true,
-            ) {
-                viewModel.deploy()
-            },
-            menu.item(
-                R.string.test_input,
-                R.drawable.ic_baseline_keyboard_24,
-                iconTint = headerPalette.ink,
-                showAsAction = true,
-            ) {
-                testInputPanel?.show(window)
-            },
-            menu.item(R.string.developer) {
-                navController.navigate(NavigationRoute.Developer)
-            },
-            menu.item(R.string.about) {
-                navController.navigate(NavigationRoute.About)
-            },
-        )
-        optionMenuItems.forEach { item ->
-            viewModel.topOptionsMenu.observe(this) { enabled ->
-                item.isVisible = enabled
-            }
-        }
+        // Home page keeps a clean header: the deploy and test-keyboard icons are
+        // gone (the keyboard experience row already covers the test panel).
         menu.item(
             R.string.edit,
             R.drawable.ic_baseline_edit_24,

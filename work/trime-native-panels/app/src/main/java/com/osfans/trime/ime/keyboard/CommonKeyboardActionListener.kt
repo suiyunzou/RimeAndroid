@@ -475,8 +475,9 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
             }
 
             private fun switchToVoiceInputMethod() {
-                // Native, 100% on-device offline voice recognition (Sherpa-ONNX)
-                com.osfans.trime.ime.voice.OfflineVoiceManager.toggleListening(service)
+                // On-device sherpa-onnx overlay; the service owns the panel and
+                // requests RECORD_AUDIO from an activity, never from here.
+                service.toggleVoiceInput()
             }
 
             private fun handleDefaultKeyAction(action: KeyAction) {

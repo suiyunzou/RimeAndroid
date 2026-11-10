@@ -12,6 +12,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Screenshot-to-chat shortcut: reads only the newest screenshot on demand. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <!-- Optional, user-enabled suggestions from newly received verification messages. -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <!-- User-initiated dictionary/model downloads; typing and audio remain local. -->
@@ -147,6 +152,22 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
         <activity android:name=".ime.smart.WordLibraryActivity" android:exported="false"
             android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+
+        <!-- Invisible activity used only to ask for RECORD_AUDIO from the IME service. -->
+        <activity
+            android:name=".ime.voice.VoicePermissionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Invisible activity used only to ask for screenshot read access. -->
+        <activity
+            android:name=".ime.screenshot.TransparentActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Settings activity -->
         <activity

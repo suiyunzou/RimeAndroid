@@ -747,6 +747,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
         startedInputView = false
         decorLocationUpdated = false
+        inputView?.onKeyboardHidden()
         inputView?.dismissCandidateActionMenu()
         candidatesView?.dismissCandidateActionMenu()
         inputDeviceManager.onFinishInputView()
@@ -850,6 +851,12 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     fun commitText(text: String) {
         commitTextWithResult(text)
+    }
+
+    /** Entry point for the keyboard's microphone key (offline ASR overlay). */
+    fun toggleVoiceInput() {
+        if (!inputDeviceManager.useVirtualKeyboard) return
+        inputView?.voiceUi?.toggle()
     }
 
     private fun commitTextWithResult(text: String): Boolean {
