@@ -70,7 +70,6 @@ object OfflineVoiceManager {
     private val commitOnFinish = AtomicBoolean(true)
     private val preloadStarted = AtomicBoolean(false)
 
-    private var lastAmplitudeAt = 0L
     private var lastPartial = ""
 
     private val idleRelease = Runnable {
@@ -176,22 +175,30 @@ object OfflineVoiceManager {
             postCaption("正在聆听 · 点击麦克风结束")
 
             val startedAt = SystemClock.uptimeMillis()
-            val shorts = ShortArray(1_600)
+            // Meter each 25 ms slice, but keep ASR/punctuation on 100 ms batches.
+            val shorts = ShortArray(SAMPLE_RATE / 40)
             val floats = FloatArray(1_600)
+            var filled = 0
+            var batchEnergy = 0.0
             val pausePrefixes = ArrayList<String>(4)
             var speaking = false
             while (!stopRequested.get() && SystemClock.uptimeMillis() - startedAt < MAX_SESSION_MS) {
-                val read = recorder.read(shorts, 0, shorts.size)
+                val read = recorder.read(shorts, 0, minOf(shorts.size, floats.size - filled))
                 if (read <= 0) continue
                 var energy = 0.0
                 for (i in 0 until read) {
                     val sample = shorts[i] / 32768.0f
-                    floats[i] = sample
+                    floats[filled + i] = sample
                     energy += sample * sample
                 }
-                val level = sqrt(energy / read).toFloat()
-                postAmplitude(level)
-                stream.acceptWaveform(floats.copyOf(read), SAMPLE_RATE)
+                postAmplitude(sqrt(energy / read).toFloat())
+                filled += read
+                batchEnergy += energy
+                if (filled < floats.size) continue
+                val level = sqrt(batchEnergy / filled).toFloat()
+                stream.acceptWaveform(floats, SAMPLE_RATE)
+                filled = 0
+                batchEnergy = 0.0
                 while (engine.isReady(stream)) engine.decode(stream)
                 val partial = cleanText(engine.getResult(stream).text)
                 if (partial.isNotEmpty() && partial != lastPartial) {
@@ -212,6 +219,7 @@ object OfflineVoiceManager {
 
             setState(State.FINISHING)
             postCaption("正在识别…")
+            if (filled > 0) stream.acceptWaveform(floats.copyOf(filled), SAMPLE_RATE)
             stream.inputFinished()
             while (engine.isReady(stream)) engine.decode(stream)
             finalText = VoiceTextNormalizer.punctuate(
@@ -339,10 +347,6 @@ object OfflineVoiceManager {
     }
 
     private fun postAmplitude(level: Float) {
-        val now = SystemClock.uptimeMillis()
-        if (now - lastAmplitudeAt < 50) return
-        lastAmplitudeAt = now
-        val normalized = (level * 10f).coerceIn(0f, 1f)
-        mainHandler.post { listener?.onAmplitude(normalized) }
+        mainHandler.post { listener?.onAmplitude(level) }
     }
 }

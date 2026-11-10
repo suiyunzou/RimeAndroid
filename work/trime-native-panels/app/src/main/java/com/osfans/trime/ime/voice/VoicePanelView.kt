@@ -10,20 +10,19 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
-import android.view.animation.AccelerateInterpolator
-import android.view.animation.LinearInterpolator
-import android.view.animation.OvershootInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -31,8 +30,8 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /**
- * Full-keyboard voice listening panel: translucent breathing ripples, a live
- * transcript, a pulsing microphone and a cancel affordance. Everything is drawn
+ * Full-keyboard voice listening panel: an audio meter, a live
+ * transcript, a microphone control and a cancel affordance. Everything is drawn
  * with the platform canvas: no resources, no child views and no extra
  * dependency.
  *
@@ -42,7 +41,7 @@ import kotlin.math.sin
  * main thread. While visible the panel consumes every touch inside its bounds.
  */
 class VoicePanelView(context: Context) : FrameLayout(context) {
-    enum class Phase { HIDDEN, LOADING, LISTENING, DONE, ERROR }
+    enum class Phase { HIDDEN, LOADING, LISTENING, FINISHING, ERROR }
 
     data class Style(
         val dark: Boolean,
@@ -57,13 +56,10 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
     var onCancel: (() -> Unit)? = null
 
     private val density = resources.displayMetrics.density
-    private val animatorScale = runCatching {
-        Settings.Global.getFloat(
-            context.contentResolver,
-            Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        )
-    }.getOrDefault(1f)
+    private val legacyMotionEnabled = Build.VERSION.SDK_INT >= 26 ||
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    private val animationsEnabled: Boolean
+        get() = if (Build.VERSION.SDK_INT >= 26) ValueAnimator.areAnimatorsEnabled() else legacyMotionEnabled
     private val mediumTypeface: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
 
     private var style = Style(
@@ -86,20 +82,18 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
     private val micCradle = RectF()
 
     private var phase = Phase.HIDDEN
+    val isListening: Boolean get() = phase == Phase.LISTENING
     private var caption = ""
     private var transcript = ""
     private var transcriptLines: List<String> = emptyList()
     private var transcriptMaxLines = 3
     private var transcriptTextSize = 0f
     private var transcriptLineHeight = 0f
-    private var amplitude = 0f
-    private var drawnAmplitude = 0f
-    private var clock = 0f
-    private var clockStart = 0L
+    private val wave = VoiceWaveMotion()
+    private val waveFrame = Runnable { updateWave() }
     private var motion = 0f
     private var motionTarget = 0f
     private var motionAnimator: ValueAnimator? = null
-    private var pumpAnimator: ValueAnimator? = null
     private var pressed = Target.NONE
     private var pressedY = 0f
 
@@ -121,11 +115,10 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
     private var waveCy = 0f
     private var waveHalfWidth = 0f
     private var waveHalfHeight = 0f
-    private val waveLens = Path()
-    private var waveColorDeep = 0xFF0A84FF.toInt()
-    private var waveColorLight = 0xFF5AC8FA.toInt()
-    private var glowShader: RadialGradient? = null
-    private var glowShaderAccent = 0
+    private val wavePath = Path()
+    private val ribbonHeights = FloatArray(WAVE_SAMPLES + 1)
+    private val idleRect = RectF()
+    private var idleShader: LinearGradient? = null
     private var panelShader: LinearGradient? = null
 
     private enum class Target { NONE, MIC, CLOSE }
@@ -141,23 +134,18 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         setWillNotDraw(false)
         visibility = GONE
         buildMicGlyph()
-        buildWaveLens()
     }
 
     /** Colors only change the palette; geometry and animation state are kept. */
     fun applyStyle(style: Style) {
         this.style = style
-        // The waveform keeps the Apple palette regardless of the theme accent:
-        // deep system blue with a cyan-blue outer ramp (iOS light/dark variants).
-        waveColorDeep = if (style.dark) 0xFF0A84FF.toInt() else 0xFF007AFF.toInt()
-        waveColorLight = if (style.dark) 0xFF64D2FF.toInt() else 0xFF5AC8FA.toInt()
-        glowShader = null
+        idleShader = null
         panelShader = null
         invalidate()
     }
 
     /**
-     * LOADING, LISTENING, DONE and ERROR show the panel and play the entrance
+     * LOADING, LISTENING, FINISHING and ERROR show the panel and play the entrance
      * animation when it was hidden. HIDDEN plays the reverse animation and then
      * becomes GONE. Repeating the current phase is a no-op.
      *
@@ -169,8 +157,11 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         val previous = this.phase
         this.phase = phase
         caption = defaultCaption(phase)
+        if (phase != Phase.LISTENING) wave.stop()
+        if (phase == Phase.LOADING || (phase == Phase.LISTENING && previous != Phase.LISTENING)) wave.reset()
         if (phase == Phase.HIDDEN) {
-            syncPump()
+            removeCallbacks(waveFrame)
+            wave.reset()
             if (visibility == VISIBLE && motion > 0f) {
                 animateMotion(0f)
             } else {
@@ -183,7 +174,6 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         }
         val entering = visibility != VISIBLE || motion <= 0f
         if (entering) {
-            if (previous == Phase.HIDDEN) drawnAmplitude = 0f
             visibility = VISIBLE
             animateMotion(1f)
         } else if (motion < 1f || motionTarget < 1f) {
@@ -192,12 +182,14 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         } else {
             invalidate()
         }
-        syncPump()
+        updateWave()
     }
 
-    /** Normalized input level, 0 = silence, 1 = loud. Values are clamped. */
-    fun setAmplitude(amplitude: Float) {
-        this.amplitude = if (amplitude.isFinite()) amplitude.coerceIn(0f, 1f) else 0f
+    /** RMS of the latest microphone slice, relative to full-scale PCM. */
+    fun setAmplitude(rms: Float) {
+        if (phase != Phase.LISTENING) return
+        wave.sample(rms, SystemClock.uptimeMillis())
+        updateWave()
     }
 
     /** Recognized text, up to three wrapped lines with an ellipsis. */
@@ -237,27 +229,33 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        syncPump()
-        invalidate()
+        updateWave()
     }
 
     override fun onDetachedFromWindow() {
-        // Animator listeners reference this view; drop both pumps before detaching.
+        // Drop pending frames and animation listeners before detaching.
         val animator = motionAnimator
         motionAnimator = null
         animator?.cancel()
-        stopPump()
+        removeCallbacks(waveFrame)
+        wave.reset()
         super.onDetachedFromWindow()
     }
 
     override fun onVisibilityChanged(changedView: View, visibility: Int) {
         super.onVisibilityChanged(changedView, visibility)
-        syncPump()
+        if (!isShown) {
+            removeCallbacks(waveFrame)
+            wave.reset()
+        }
     }
 
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
-        syncPump()
+        if (visibility != VISIBLE) {
+            removeCallbacks(waveFrame)
+            wave.reset()
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -266,16 +264,12 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         val fade = motion.coerceIn(0f, 1f)
         if (fade <= 0f) return
         val checkpoint = canvas.save()
-        canvas.translate(0f, (1f - motion) * dp(24f))
-        val scale = 0.96f + 0.04f * motion
-        canvas.scale(scale, scale, width * 0.5f, height * 0.5f)
         canvas.clipPath(panelPath)
         drawPanel(canvas, fade)
         if (cancelArmed) {
             drawCancelHill(canvas, fade)
         } else {
             drawWaves(canvas, fade)
-            drawMicGlow(canvas, fade)
         }
         drawTranscript(canvas, fade)
         drawCaption(canvas, fade)
@@ -363,6 +357,7 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         val panelHeight = height.toFloat()
         if (panelWidth <= 0f || panelHeight <= 0f) return
         panelShader = null
+        idleShader = null
         val radius = min(dp(20f), min(panelWidth, panelHeight) * 0.5f)
         panelPath.reset()
         panelPath.addRoundRect(0f, 0f, panelWidth, panelHeight, radius, radius, Path.Direction.CW)
@@ -371,31 +366,28 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         closeCy = dp(24f)
         closeHitRadius = dp(19f)
 
-        contentTop = min(dp(52f), panelHeight * 0.28f)
+        contentTop = min(dp(42f), panelHeight * 0.21f)
         micRadius = max(dp(15f), min(dp(24f), panelHeight * 0.15f))
         micCx = panelWidth * 0.5f
         micCy = panelHeight - max(micRadius + dp(24f), dp(48f))
-        // Extra clearance above the microphone: its glow halo must not overlap
-        // the caption line.
-        captionY = micCy - micRadius - dp(30f)
+        captionY = micCy - micRadius - dp(14f)
         hillHeight = panelHeight * 0.38f
         transcriptTop = contentTop
         transcriptLineHeight = dp(22f)
         transcriptTextSize = dp(16f)
 
-        // The wave owns the middle of the sheet; the transcript sits above it
-        // and the caption + microphone below.
-        val bandTop = contentTop + dp(4f)
-        val bandBottom = captionY - dp(16f)
-        val band = max(bandBottom - bandTop, dp(20f))
+        // Allocate space above the meter for text, even when recognition is empty.
+        val bandBottom = captionY - dp(20f)
+        val available = (bandBottom - transcriptTop).coerceAtLeast(0f)
+        val preferredWaveHeight = min(panelWidth * 0.26f, available * 0.68f)
+        transcriptMaxLines = ((available - preferredWaveHeight - dp(4f)) / transcriptLineHeight)
+            .toInt().coerceIn(0, 3)
+        val bandTop = transcriptTop + transcriptMaxLines * transcriptLineHeight + dp(4f)
+        val band = (bandBottom - bandTop).coerceAtLeast(0f)
         waveCx = panelWidth * 0.5f
-        waveCy = bandTop + band * 0.52f
-        waveHalfWidth = panelWidth * 0.40f
-        waveHalfHeight = min(max(band * 0.26f, dp(15f)), dp(30f))
-        transcriptMaxLines =
-            ((waveCy - waveHalfHeight - transcriptTop) / transcriptLineHeight)
-                .toInt()
-                .coerceIn(0, 3)
+        waveCy = bandTop + band * 0.5f
+        waveHalfWidth = panelWidth * 0.45f
+        waveHalfHeight = min(band * 0.5f, panelWidth * 0.13f)
 
         textPaint.textSize = transcriptTextSize
         rebuildTranscript()
@@ -414,22 +406,14 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         micStroke.lineTo(4.5f, 9.5f)
     }
 
-    /** Unit lens (vesica) with pointed tips at ±1 and apexes at ±1. */
-    private fun buildWaveLens() {
-        waveLens.reset()
-        waveLens.moveTo(-1f, 0f)
-        waveLens.quadTo(0f, -2f, 1f, 0f)
-        waveLens.quadTo(0f, 2f, -1f, 0f)
-        waveLens.close()
-    }
-
     private fun rebuildTranscript() {
         transcriptLines = emptyList()
         if (width <= 0) return
         val limit = width - dp(48f)
         if (limit <= dp(40f) || transcript.isEmpty()) return
         textPaint.textSize = transcriptTextSize
-        val maxLines = transcriptMaxLines.coerceAtLeast(1)
+        val maxLines = transcriptMaxLines
+        if (maxLines <= 0) return
         val lines = ArrayList<String>()
         val builder = StringBuilder()
         var widthSoFar = 0f
@@ -492,65 +476,55 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         paint.style = Paint.Style.FILL
     }
 
-    /**
-     * Overlapping lens (vesica) layers sharing one centre, like the iOS voice
-     * sheet: pointed tips, distinct per-layer widths and heights that fan out
-     * as the level rises, and an outer-light/inner-deep blue ramp. At rest all
-     * layers collapse into one soft hairline, exactly like the reference.
-     */
     private fun drawWaves(canvas: Canvas, fade: Float) {
         if (waveHalfWidth <= 0f || waveHalfHeight <= 0f) return
-        // Raw mic levels sit low in normal rooms; expand hard so ordinary
-        // speech reaches the full lens stack instead of a flat line.
-        val level = drawnAmplitude.pow(0.45f)
-        val swayMix = 0.3f + 0.7f * level
+        val listening = phase == Phase.LISTENING
+        if (!listening && phase != Phase.FINISHING) return
+        val level = wave.level
+        val color = if (style.dark) 0xFF409CFF.toInt() else 0xFF007AFF.toInt()
         paint.style = Paint.Style.FILL
-        paint.shader = null
-        val half = (WAVE_LAYERS - 1) * 0.5f
-        for (index in 0 until WAVE_LAYERS) {
-            val ramp = index.toFloat() / (WAVE_LAYERS - 1).coerceAtLeast(1)
-            val sway = 0.5f + 0.5f * sin(clock * (1.15f + index * 0.33f) + index * 1.7f)
-            val breath = 0.5f + 0.5f * sin(clock * (0.7f + index * 0.19f) + index * 2.3f)
-            val widthBase = LENS_WIDTH[index % LENS_WIDTH.size]
-            val heightBase = LENS_HEIGHT[index % LENS_HEIGHT.size]
-            val yOffsetBase = LENS_LIFT[index % LENS_LIFT.size]
-            // Rest: every layer is the same long line. Speaking: each layer
-            // keeps its own width/height base and only pulses partway.
-            val spread = 0.78f + 0.22f * sway
-            val halfWidth =
-                waveHalfWidth * mix(0.90f, widthBase * spread, level)
-            val halfHeight =
-                max(
-                    dp(4f),
-                    waveHalfHeight * mix(0.12f, heightBase * (0.5f + 0.5f * breath), level),
-                )
-            val centerX =
-                waveCx +
-                    (index - half) * waveHalfWidth * 0.06f * level +
-                    sin(clock * 0.5f + index * 1.05f) * waveHalfWidth * 0.05f * swayMix
-            val centerY =
-                waveCy +
-                    yOffsetBase * waveHalfHeight * level +
-                    sin(clock * 0.9f + index * 1.31f) * waveHalfHeight * 0.08f * swayMix
-            val alpha = (70f + 30f * index + 60f * level * breath).toInt().coerceIn(0, 225)
-            paint.color = withAlpha(blend(waveColorDeep, waveColorLight, 0.72f * ramp), (alpha * fade).toInt())
-            canvas.save()
-            canvas.translate(centerX, centerY)
-            canvas.scale(halfWidth, halfHeight)
-            canvas.drawPath(waveLens, paint)
-            canvas.restore()
+        if (listening && level < 0.10f) {
+            val extent = waveHalfWidth * 0.82f
+            val thickness = dp(0.9f)
+            idleRect.set(waveCx - extent, waveCy - thickness / 2f, waveCx + extent, waveCy + thickness / 2f)
+            paint.shader = idleShader ?: LinearGradient(
+                idleRect.left, waveCy, idleRect.right, waveCy,
+                intArrayOf(withAlpha(color, 0), withAlpha(color, 195), withAlpha(color, 0)),
+                null, Shader.TileMode.CLAMP,
+            ).also { idleShader = it }
+            paint.alpha = (255 * fade * (1f - level / 0.10f)).toInt()
+            canvas.drawRoundRect(idleRect, thickness / 2f, thickness / 2f, paint)
+            paint.shader = null
+        }
+        if (level <= 0f) {
+            paint.alpha = 255
+            return
+        }
+        val halfWidth = waveHalfWidth * (0.82f + 0.18f * (level * 4f).coerceAtMost(1f))
+        val left = waveCx - halfWidth
+        val step = 2f * halfWidth / WAVE_SAMPLES
+        val halfHeight = waveHalfHeight * level.pow(0.83f)
+        val opacity = fade * (level * 10f).coerceAtMost(1f)
+        for (layer in RIBBONS) {
+            val phase = layer.phase + TAU * wave.seconds * layer.turns / VoiceWaveMotion.PHASE_PERIOD_S
+            val c = cos(phase)
+            val s = sin(phase)
+            for (i in 0..WAVE_SAMPLES) {
+                // The carrier crosses the centre several times. Reflect each lobe
+                // around that fixed axis; the taper brings both tips to zero.
+                val carrier = abs(layer.sin[i] * c - layer.cos[i] * s)
+                ribbonHeights[i] = halfHeight * layer.taper[i] * carrier
+            }
+            wavePath.rewind()
+            wavePath.moveTo(left, waveCy)
+            for (i in 1..WAVE_SAMPLES) wavePath.lineTo(left + step * i, waveCy - ribbonHeights[i])
+            for (i in WAVE_SAMPLES - 1 downTo 0) wavePath.lineTo(left + step * i, waveCy + ribbonHeights[i])
+            wavePath.close()
+            paint.color = withAlpha(color, (layer.alpha * opacity).toInt())
+            canvas.drawPath(wavePath, paint)
         }
         paint.alpha = 255
-        paint.style = Paint.Style.FILL
     }
-
-    private fun mix(
-        rest: Float,
-        active: Float,
-        level: Float,
-    ): Float = rest + (active - rest) * level
-
-    private fun layerBase(index: Int): Float = 1f - 0.30f * ((index * 0.37f) % 1f)
 
     private fun ensurePanelShader(): LinearGradient {
         panelShader?.let { return it }
@@ -652,59 +626,11 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         drawMicGlyph(canvas, panelWidth * 0.5f, panelHeight - hillHeight * 0.5f, panelWidth * 0.0052f, fade)
     }
 
-    private fun drawMicGlow(canvas: Canvas, fade: Float) {
-        if (micRadius <= 0f) return
-        val level = drawnAmplitude
-        val accent = style.accent
-        val shader =
-            glowShader?.takeIf { glowShaderAccent == accent }
-                ?: RadialGradient(
-                    0f,
-                    0f,
-                    1f,
-                    intArrayOf(
-                        withAlpha(accent, 120),
-                        withAlpha(accent, 56),
-                        withAlpha(accent, 0),
-                    ),
-                    floatArrayOf(0f, 0.55f, 1f),
-                    Shader.TileMode.CLAMP,
-                ).also {
-                    glowShader = it
-                    glowShaderAccent = accent
-                }
-        val radius = micRadius * (2.0f + 0.8f * level)
-        paint.style = Paint.Style.FILL
-        paint.shader = shader
-        paint.alpha = (190f * fade).toInt().coerceIn(0, 255)
-        canvas.save()
-        canvas.translate(micCx, micCy)
-        canvas.scale(radius, radius)
-        canvas.drawCircle(0f, 0f, 1f, paint)
-        canvas.restore()
-        paint.alpha = 255
-        paint.shader = null
-    }
-
     private fun drawMic(canvas: Canvas, fade: Float) {
         if (micRadius <= 0f) return
-        val level = drawnAmplitude
-        val active = phase == Phase.LOADING || phase == Phase.LISTENING
-        val pulseColor = blend(style.accent, Color.WHITE, if (style.dark) 0.35f else 0.28f)
-        if (active) {
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(1.4f)
-            for (index in 0 until 2) {
-                val progress = (clock * 0.5f + index * 0.5f) % 1f
-                val alpha = ((1f - progress) * (70f + 110f * level) * fade).toInt()
-                if (alpha <= 0) continue
-                paint.color = withAlpha(pulseColor, alpha)
-                canvas.drawCircle(micCx, micCy, micRadius * (1f + progress * 0.9f), paint)
-            }
-        }
         paint.style = Paint.Style.FILL
         val pressedScale = if (pressed == Target.MIC) 0.93f else 1f
-        val radius = micRadius * pressedScale * (1f + level * 0.035f)
+        val radius = micRadius * pressedScale
         paint.color = withAlpha(style.accent, (252f * fade).toInt())
         canvas.drawCircle(micCx, micCy, radius, paint)
         paint.style = Paint.Style.STROKE
@@ -772,21 +698,16 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         val previous = motionAnimator
         motionAnimator = null
         previous?.cancel()
-        if (animatorScale <= 0f) {
+        if (!animationsEnabled) {
             motion = target
             motionTarget = target
             onMotionEnd(target)
             return
         }
         val from = motion
-        val baseDuration = if (target > from) ENTER_MS.toFloat() else EXIT_MS.toFloat()
         val animator = ValueAnimator.ofFloat(from, target).apply {
-            duration = (baseDuration * animatorScale).toLong().coerceAtLeast(1L)
-            interpolator = if (target > from) {
-                OvershootInterpolator(0.85f)
-            } else {
-                AccelerateInterpolator(1.6f)
-            }
+            duration = if (target > from) ENTER_MS else EXIT_MS
+            interpolator = DecelerateInterpolator()
             addUpdateListener { animation ->
                 motion = animation.animatedValue as Float
                 invalidate()
@@ -810,41 +731,21 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         motion = target
         motionTarget = target
         if (target <= 0f && phase == Phase.HIDDEN) visibility = GONE
-        syncPump()
         invalidate()
     }
 
-    private fun startPump() {
-        if (pumpAnimator?.isRunning == true) return
-        clockStart = SystemClock.uptimeMillis() - (clock * 1000f).toLong()
-        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1000L
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.RESTART
-            interpolator = LinearInterpolator()
-            addUpdateListener { pumpFrame() }
+    private fun updateWave() {
+        removeCallbacks(waveFrame)
+        if (!isAttachedToWindow || !isShown || windowVisibility != VISIBLE) return
+        val before = wave.level
+        val animate = animationsEnabled
+        val listening = phase == Phase.LISTENING
+        if (wave.advance(SystemClock.uptimeMillis(), animate, listening)) {
+            postOnAnimation(waveFrame)
+        } else if (!animate && listening && wave.level > 0f) {
+            postDelayed(waveFrame, VoiceWaveMotion.SAMPLE_TIMEOUT_MS)
         }
-        pumpAnimator = animator
-        animator.start()
-    }
-
-    private fun stopPump() {
-        val animator = pumpAnimator ?: return
-        pumpAnimator = null
-        animator.cancel()
-    }
-
-    private fun syncPump() {
-        if (visibility == VISIBLE && isShown && phase != Phase.HIDDEN) startPump() else stopPump()
-    }
-
-    private fun pumpFrame() {
-        clock = (SystemClock.uptimeMillis() - clockStart) / 1000f
-        val active = phase == Phase.LOADING || phase == Phase.LISTENING
-        val target = if (active) amplitude else 0f
-        drawnAmplitude += (target - drawnAmplitude) * 0.18f
-        if (abs(target - drawnAmplitude) < 0.004f) drawnAmplitude = target
-        invalidate()
+        if (before > 0f || wave.level > 0f) invalidate()
     }
 
     // endregion
@@ -856,7 +757,7 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
     private fun defaultCaption(phase: Phase): String = when (phase) {
         Phase.LOADING -> "正在准备语音模型…"
         Phase.LISTENING -> "正在聆听 · 点击麦克风结束"
-        Phase.DONE -> "识别完成"
+        Phase.FINISHING -> "正在识别…"
         Phase.ERROR -> "语音识别不可用，点击麦克风重试"
         Phase.HIDDEN -> ""
     }
@@ -884,15 +785,32 @@ class VoicePanelView(context: Context) : FrameLayout(context) {
         )
     }
 
-    private companion object {
-        const val ENTER_MS = 240L
-        const val EXIT_MS = 190L
-        const val WAVE_LAYERS = 6
-        const val MIC_BOX_HEIGHT = 18.5f
+    private class Ribbon(
+        val alpha: Int,
+        val phase: Float,
+        val turns: Int,
+        cycles: Float,
+        height: Float,
+        lean: Float,
+    ) {
+        val sin = FloatArray(WAVE_SAMPLES + 1) { kotlin.math.sin(TAU * cycles * it / WAVE_SAMPLES) }
+        val cos = FloatArray(WAVE_SAMPLES + 1) { kotlin.math.cos(TAU * cycles * it / WAVE_SAMPLES) }
+        val taper = FloatArray(WAVE_SAMPLES + 1) { i ->
+            val x = 2f * i / WAVE_SAMPLES - 1f
+            height * (1f - x * x).pow(1.65f) * (1f + lean * x)
+        }
+    }
 
-        /** Per-layer shape bases (fraction of the wave box): widest/quietest first. */
-        val LENS_WIDTH = floatArrayOf(1.00f, 0.72f, 0.86f, 0.58f, 0.44f, 0.66f)
-        val LENS_HEIGHT = floatArrayOf(0.86f, 0.58f, 1.00f, 0.72f, 0.48f, 0.80f)
-        val LENS_LIFT = floatArrayOf(0.00f, -0.30f, 0.22f, -0.42f, 0.34f, -0.16f)
+    private companion object {
+        const val ENTER_MS = 140L
+        const val EXIT_MS = 120L
+        const val MIC_BOX_HEIGHT = 18.5f
+        const val TAU = 6.2831855f
+        const val WAVE_SAMPLES = 120
+        val RIBBONS = arrayOf(
+            Ribbon(alpha = 75, phase = 1.0f, turns = 7, cycles = 2.12f, height = 0.99f, lean = 0.31f),
+            Ribbon(alpha = 121, phase = 2.0f, turns = 10, cycles = 2.25f, height = 0.77f, lean = -0.36f),
+            Ribbon(alpha = 253, phase = 0.1f, turns = 9, cycles = 2.39f, height = 0.72f, lean = 0.04f),
+        )
     }
 }

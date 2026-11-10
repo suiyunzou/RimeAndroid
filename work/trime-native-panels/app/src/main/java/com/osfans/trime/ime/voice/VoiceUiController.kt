@@ -103,9 +103,8 @@ class VoiceUiController(
     private fun begin() {
         handler.removeCallbacksAndMessages(null)
         panel.setTranscript("")
-        panel.setAmplitude(0f)
-        panel.setCaption("正在准备离线语音模型…")
         panel.setPhase(VoicePanelView.Phase.LOADING)
+        panel.setCaption("正在准备离线语音模型…")
         OfflineVoiceManager.start(service)
     }
 
@@ -116,7 +115,6 @@ class VoiceUiController(
 
     fun hidePanel() {
         handler.removeCallbacksAndMessages(null)
-        panel.setAmplitude(0f)
         panel.setPhase(VoicePanelView.Phase.HIDDEN)
     }
 
@@ -138,8 +136,8 @@ class VoiceUiController(
             OfflineVoiceManager.State.PREPARING -> panel.setPhase(VoicePanelView.Phase.LOADING)
             OfflineVoiceManager.State.LISTENING -> panel.setPhase(VoicePanelView.Phase.LISTENING)
             OfflineVoiceManager.State.FINISHING -> {
-                panel.setPhase(VoicePanelView.Phase.LISTENING)
-                panel.setCaption("正在识别…")
+                // A cancel may already have closed the panel while the engine drains.
+                if (panel.isListening) panel.setPhase(VoicePanelView.Phase.FINISHING)
             }
 
             OfflineVoiceManager.State.IDLE -> hideDelayed(420)
@@ -164,8 +162,8 @@ class VoiceUiController(
 
     private fun showError(message: String) {
         panel.setTranscript("")
-        panel.setCaption(message)
         panel.setPhase(VoicePanelView.Phase.ERROR)
+        panel.setCaption(message)
         hideDelayed(1_600)
     }
 }
