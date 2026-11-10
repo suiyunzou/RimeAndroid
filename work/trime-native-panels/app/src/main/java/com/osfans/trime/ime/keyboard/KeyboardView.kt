@@ -18,6 +18,7 @@ import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.popup.PopupDelegate
+import com.osfans.trime.ime.smart.KeyBindingHint
 
 // TODO: move layout calculation responsibilities from Keyboard to KeyboardView using ConstraintLayout
 @SuppressLint("ViewConstructor")
@@ -33,6 +34,7 @@ class KeyboardView(
 
     private val keys get() = keyboard.keys
     var smartFeaturesEnabled = true
+    internal val bindingHint by lazy { KeyBindingHint(context) }
 
     private val smartTouch by lazy {
         com.osfans.trime.ime.smart.SmartKeyboardPointerDispatcher(this, service, keys, keyboardActionListener)

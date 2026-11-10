@@ -9,7 +9,7 @@ import android.view.inputmethod.InputConnection
 object PairPunctuationHandler {
     val pairs: Map<Char, Char> = mapOf(
         '(' to ')', '（' to '）', '《' to '》', '「' to '」', '【' to '】',
-        '"' to '"', '\'' to '\'', '{' to '}', '[' to ']', '“' to '”', '‘' to '’',
+        '"' to '"', '\'' to '\'', '{' to '}', '｛' to '｝', '[' to ']', '“' to '”', '‘' to '’',
     )
 
     fun insertPair(connection: InputConnection?, openChar: Char): Boolean =

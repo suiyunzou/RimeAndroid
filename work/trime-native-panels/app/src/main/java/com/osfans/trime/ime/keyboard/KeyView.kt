@@ -12,15 +12,21 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
 import android.view.MotionEvent
+import androidx.core.view.ViewCompat
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizeDp
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.popup.PopupAction
 import com.osfans.trime.ime.popup.PopupDelegate
+import com.osfans.trime.ime.smart.FlickDirection
+import com.osfans.trime.ime.smart.KeyBindingLabels
+import com.osfans.trime.ime.smart.KeyboardPunctuation
+import com.osfans.trime.ime.smart.OfflinePrivacyPolicy
 import com.osfans.trime.util.sp
 import splitties.dimensions.dp
 import timber.log.Timber
@@ -67,7 +73,7 @@ class KeyView(
             val custom = smartPrefs.binding(name, up)
             when {
                 custom?.startsWith("text:") == true -> custom.removePrefix("text:").take(5)
-                custom != null -> com.osfans.trime.ime.smart.KeyBindingLabels.corner(custom)
+                custom != null -> KeyBindingLabels.corner(custom)
                 code == KeyEvent.KEYCODE_SHIFT_LEFT || code == KeyEvent.KEYCODE_SHIFT_RIGHT -> "EN"
                 else -> key.symbolLabel.trim().takeIf { it.isNotEmpty() }
             }
@@ -94,6 +100,7 @@ class KeyView(
     private val symbolPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
     }
+    private val labelInk = Rect()
 
     private var cachedIcon: IconicsDrawable? = null
     private var cachedIconName: String? = null
@@ -390,10 +397,14 @@ class KeyView(
         val reference = theme.isIosStyle
         // Paint from the cached status: drawing a key must not wait for native input work.
         val languageKey = reference && (key.code == KeyEvent.KEYCODE_SPACE || key.click?.toggle == "ascii_mode")
-        val asciiMode = if (languageKey) {
-            keyboard.displayedAsciiMode ?: (com.osfans.trime.daemon.RimeDaemon.getFirstSessionOrNull()?.run { statusCached.isAsciiMode } == true)
-        } else false
-        val label = when {
+        val asciiMode = keyboard.displayedAsciiMode
+            ?: (com.osfans.trime.daemon.RimeDaemon.getFirstSessionOrNull()?.run { statusCached.isAsciiMode } == true)
+        val localized = keyboardView.smartFeaturesEnabled && !OfflinePrivacyPolicy.sensitiveEditor &&
+            service.currentInputEditorInfo?.inputType?.let {
+                it and android.text.InputType.TYPE_MASK_CLASS == android.text.InputType.TYPE_CLASS_TEXT &&
+                    it and android.text.InputType.TYPE_MASK_VARIATION != android.text.InputType.TYPE_TEXT_VARIATION_URI
+            } == true
+        val rawLabel = when {
             flickPreviewLabel != null -> flickPreviewLabel!!
             keyboard.flickSymbolsLocked && key.click?.select == "number" -> "ABC"
             languageKey && key.code == KeyEvent.KEYCODE_SPACE -> ""
@@ -404,6 +415,7 @@ class KeyView(
                 else it
             }
         }
+        val label = if (localized) KeyboardPunctuation.localized(rawLabel, asciiMode) else rawLabel
 
         contentDescription = when (key.getCode(KeyBehavior.CLICK)) {
             KeyEvent.KEYCODE_SPACE -> "空格"
@@ -414,9 +426,7 @@ class KeyView(
         }
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
 
-        if (label.isNotEmpty()) {
-            drawLabel(canvas, label)
-        }
+        val labelTop = if (label.isNotEmpty()) drawLabel(canvas, label) else Float.POSITIVE_INFINITY
 
         if (reference && key.code == KeyEvent.KEYCODE_SPACE) {
             textPaint.apply {
@@ -431,13 +441,25 @@ class KeyView(
             textPaint.textAlign = Paint.Align.CENTER
         }
 
-        val binding = if(keyboardView.smartFeaturesEnabled && !glidePrefs.enabled && smartPrefs.flickDirection != com.osfans.trime.ime.smart.FlickDirection.OFF)
-            smartPrefs.binding(bindingName(),smartPrefs.flickDirection == com.osfans.trime.ime.smart.FlickDirection.UP) else null
-        val symbol = if(binding != null) com.osfans.trime.ime.smart.KeyBindingLabels.corner(binding)
-            else if(keyboardView.smartFeaturesEnabled && (glidePrefs.enabled || smartPrefs.flickDirection == com.osfans.trime.ime.smart.FlickDirection.OFF)) ""
-            else key.symbolLabel
-        if (symbol.isNotEmpty()) {
-            drawSymbol(canvas, symbol)
+        val direction = smartPrefs.flickDirection
+        val showFlick = !glidePrefs.enabled && direction != FlickDirection.OFF
+        val binding = if (keyboardView.smartFeaturesEnabled && showFlick) {
+            smartPrefs.binding(bindingName(), direction == FlickDirection.UP)
+        } else null
+        ViewCompat.setStateDescription(this, KeyBindingLabels.actionHint(binding, direction == FlickDirection.UP))
+        val defaultSymbol = key.symbolLabel
+        if (keyboardView.smartFeaturesEnabled && showFlick && !keyboardView.hideKeySymbol &&
+            (binding != null || defaultSymbol.isNotEmpty() && !defaultSymbol.isIconFont && '\n' !in defaultSymbol)) {
+            val area = RectF(
+                paddingLeft + dp(3f), paddingTop + dp(1.5f),
+                width - paddingRight - dp(3f), minOf(labelTop - dp(2f), paddingTop + (height - paddingTop - paddingBottom) * .27f),
+            )
+            keyboardView.bindingHint.draw(canvas, binding, defaultSymbol, area,
+                sp(key.symbolTextSize.takeIf { it > 0f } ?: keyboardView.symbolTextSize),
+                key.getSymbolColor(), theme.fonts.symbol,
+                asciiMode.takeIf { localized })
+        } else if ((!keyboardView.smartFeaturesEnabled || showFlick) && defaultSymbol.isNotEmpty()) {
+            drawSymbol(canvas, defaultSymbol)
         }
 
         val hint = key.hint
@@ -463,7 +485,7 @@ class KeyView(
         bg.draw(canvas)
     }
 
-    private fun drawLabel(canvas: Canvas, label: String) {
+    private fun drawLabel(canvas: Canvas, label: String): Float {
         val dimLetter = keyboard.flickSymbolsLocked && flickPreviewLabel == null &&
             key.getCode(KeyBehavior.CLICK) in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z &&
             label.length == 1 && label[0].isLetter()
@@ -477,13 +499,14 @@ class KeyView(
                 canvas, paddingLeft + contentWidth / 2f, paddingTop + contentHeight / 2f,
                 minOf(dp(32f), contentWidth * .7f, contentHeight * .76f), textColor,
             )
-            return
+            return paddingTop + contentHeight * .12f
         }
         val display = if (reference) com.osfans.trime.ime.smart.ReferenceDisplayPrefs(context) else null
         val textSize = sp(key.keyTextSize.takeIf { it > 0 } ?: if (label.length > 1 && !label.isIconFont) keyboardView.keyLongTextSize else keyboardView.keyTextSize) * ((display?.keyTextSize ?: 24) / 24f)
 
         if (label.isIconFont) {
             drawIcon(canvas, label, textSize.toInt(), textColor, key.keyTextOffsetX, key.keyTextOffsetY)
+            return (height - paddingTop - paddingBottom) / 2f + paddingTop + sp(key.keyTextOffsetY) - textSize / 2f
         } else {
             textPaint.apply {
                 color = textColor
@@ -520,6 +543,8 @@ class KeyView(
                 height - paddingBottom - fontMetrics.descent,
             ) else centerY + adjustmentY + offsetY
             canvas.drawText(label, x, baseline, textPaint)
+            textPaint.getTextBounds(label, 0, label.length, labelInk)
+            return baseline + labelInk.top
         }
     }
 

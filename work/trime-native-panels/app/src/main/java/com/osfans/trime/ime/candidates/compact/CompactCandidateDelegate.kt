@@ -11,13 +11,11 @@ import com.osfans.trime.R
 import com.osfans.trime.core.Candidates
 import com.osfans.trime.core.CandidateContext
 import com.osfans.trime.core.CompositionProto
-import com.osfans.trime.core.SchemaItem
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.daemon.launchOnReady
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.bar.UnrollButtonStateMachine
-import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.CandidateDeduplicator
 import com.osfans.trime.ime.candidates.unrolled.window.FlexboxUnrolledCandidateWindow
 import com.osfans.trime.ime.core.InputView
@@ -30,7 +28,7 @@ import org.kodein.di.DIAware
 import org.kodein.di.instance
 import kotlin.math.abs
 
-class CompactCandidateDelegate(override val di: DI) : DIAware, InputBroadcastReceiver {
+class CompactCandidateDelegate(override val di: DI) : DIAware {
     private val context: ContextThemeWrapper by instance()
     private val rime: RimeSession by instance()
     private val scope: ThemeScope by instance()
@@ -45,9 +43,7 @@ class CompactCandidateDelegate(override val di: DI) : DIAware, InputBroadcastRec
     private var endReached = true
     private var loading = false
     private var lastOffsetEmission = -1 to -1
-    private var composition = CompositionProto()
-    private var schemaId = rime.run { schemaCached.schemaId }
-    var candidateContext = CandidateContext(composition, schemaId)
+    var candidateContext = CandidateContext(CompositionProto(), "")
         private set
 
     val adapter by lazy {
@@ -77,7 +73,9 @@ class CompactCandidateDelegate(override val di: DI) : DIAware, InputBroadcastRec
     }
 
     private fun refreshUnrolled() {
-        val last = layoutManager.findLastVisibleItemPosition()
+        // A clipped trailing candidate is still missing from the strip. Include
+        // it in the expanded list, starting at its original engine index.
+        val last = layoutManager.findLastCompletelyVisibleItemPosition()
         val offset = adapter.items.getOrNull(last)?.index?.plus(1) ?: 0
         val emission = generation to offset
         if (emission != lastOffsetEmission) {
@@ -156,20 +154,17 @@ class CompactCandidateDelegate(override val di: DI) : DIAware, InputBroadcastRec
         }
     }
 
-    override fun onCandidateListUpdate(data: Candidates.Bulk) {
+    fun updateCandidates(data: Candidates.Bulk, context: CandidateContext) {
         generation++
         loading = false
         view.stopScroll()
         seen.clear()
         nextEngineIndex = data.candidates.size
         endReached = data.total >= 0 && nextEngineIndex >= data.total
-        candidateContext = CandidateContext(composition, schemaId)
+        candidateContext = context
         adapter.updateCandidates(CandidateDeduplicator.collect(data.candidates, seen = seen, context = candidateContext), data.total, data.highlighted)
         layoutManager.scrollToPositionWithOffset(0, 0)
         if (data.candidates.isEmpty()) offsets.tryEmit(0)
     }
 
-    fun captureComposition(data: CompositionProto) { composition = data }
-
-    override fun onRimeSchemaUpdated(schema: SchemaItem) { schemaId = schema.id }
 }

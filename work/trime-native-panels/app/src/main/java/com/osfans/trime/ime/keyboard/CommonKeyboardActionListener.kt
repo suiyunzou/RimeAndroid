@@ -175,15 +175,10 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
             }
 
             private fun smartCommit(text: String) {
+                if (text.isEmpty()) return
                 if (tryEmailCandidates(text)) return
-                val editor = service.currentInputEditorInfo ?: return
-                service.postRimeJob {
-                    if (service.currentInputEditorInfo !== editor) return@postRimeJob
-                    if (statusCached.isComposing) commitComposition()
-                    if (service.currentInputEditorInfo !== editor) return@postRimeJob
-                    if (text.length == 1 && PairPunctuationHandler.insertPair(service.currentInputConnection, text[0])) return@postRimeJob
-                    runCatching { service.commitText(text) }
-                }
+                service.commitPanelText(text, isActive = { true }, pairPunctuation = true,
+                    localizePunctuation = keyboardWindow.localizePunctuation) { }
             }
 
             override fun showGlideCandidates(candidates: List<GlideDecoder.Candidate>, onChoose: (GlideDecoder.Candidate) -> Unit) = inputBar.showGlideCandidates(candidates, onChoose)
@@ -197,12 +192,14 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                         if (action.startsWith("lock_flick_symbol:")) keyboardWindow.setFlickSymbolsLocked(true)
                         val keyboard = KeyboardWindow.currentKeyboard
                         val revision = keyboard.flickSymbolsRevision
-                        service.commitPanelText(text, isActive = { true }, pairPunctuation = true) { committed ->
+                        service.commitPanelText(text, isActive = { true }, pairPunctuation = true,
+                            localizePunctuation = keyboardWindow.localizePunctuation) { committed ->
                             if (!committed && KeyboardWindow.currentKeyboard === keyboard &&
                                 keyboard.flickSymbolsRevision == revision) keyboardWindow.setFlickSymbolsLocked(false)
                         }
                     }
                     action.startsWith("text:") -> smartCommit(action.removePrefix("text:"))
+                    action == "action:clear_all" -> service.clearCompositionOrText()
                     action.startsWith("action:") -> ActionKeyDispatcher.execute(service.currentInputConnection, action)
                     else -> when (action) {
                         "settings" -> service.startActivity(Intent(service, com.osfans.trime.ime.smart.SmartSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -236,6 +233,8 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                     action.commit.isNotEmpty() -> {
                         if (tryEmailCandidates(action.commit)) {
                             // The Rime processor owns the email candidate composition.
+                        } else if (keyboardWindow.localizePunctuation && KeyboardPunctuation.isLocalizable(action.commit)) {
+                            smartCommit(action.commit)
                         } else if (keyboardWindow.allowSmartInput && !service.isRimeComposing && action.commit.length == 1 && PairPunctuationHandler.insertPair(service.currentInputConnection, action.commit[0])) {
                             // A symbol key owns the pair; candidate/paste commits remain literal.
                         } else service.commitText(action.commit)
@@ -531,6 +530,16 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                 if (keyEventCode == KeyEvent.KEYCODE_DEL && metaState == 0 && keyboardWindow.allowSmartInput && !service.isRimeComposing &&
                     PairPunctuationHandler.handleBackspace(service.currentInputConnection)
                 ) return
+                if (keyboardWindow.localizePunctuation && metaState and (KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK or KeyEvent.META_META_MASK) == 0) {
+                    val char = com.osfans.trime.util.virtualKeyCharacterMap.get(keyEventCode, metaState)
+                    if (char in 1..Char.MAX_VALUE.code) {
+                        val mark = char.toChar().toString()
+                        if (KeyboardPunctuation.isLocalizable(mark)) {
+                            smartCommit(mark)
+                            return
+                        }
+                    }
+                }
                 if (keyboardWindow.allowSmartInput && !service.isRimeComposing && metaState and (KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK or KeyEvent.META_META_MASK) == 0) {
                     val char = com.osfans.trime.util.virtualKeyCharacterMap.get(keyEventCode, metaState)
                     if (char in 1..Char.MAX_VALUE.code && PairPunctuationHandler.insertPair(service.currentInputConnection, char.toChar())) return
@@ -578,6 +587,10 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
 
             override fun onText(input: String) {
                 if (input.isEmpty()) return
+                if (keyboardWindow.localizePunctuation && KeyboardPunctuation.isLocalizable(input)) {
+                    smartCommit(input)
+                    return
+                }
                 if (input.length == 1 && keyboardWindow.allowSmartInput && !service.isRimeComposing && PairPunctuationHandler.insertPair(service.currentInputConnection, input[0])) return
                 Timber.d("onText: $input")
                 val status = rime.run { statusCached }

@@ -18,6 +18,10 @@ object KeyBindingLabels {
         "action:select_all" -> "全选"
         else -> label(binding).take(3)
     }
+    fun actionHint(binding: String?, up: Boolean): String? =
+        binding?.takeIf { it.startsWith("action:") }?.let(::label)?.takeIf { it.isNotEmpty() }?.let {
+            if (up) "上滑：$it" else "下滑：$it"
+        }
     fun keyName(key: String): String = when (key) {
         "space" -> "空格"; "shift" -> "Shift"; "backspace" -> "退格"
         "enter" -> "换行"; "emoji" -> "表情"; "qwerty" -> "ABC"

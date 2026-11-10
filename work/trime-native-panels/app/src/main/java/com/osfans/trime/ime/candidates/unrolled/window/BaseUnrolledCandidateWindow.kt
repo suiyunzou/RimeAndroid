@@ -119,7 +119,7 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
         offsetJob =
             lifecycleCoroutineScope.launch {
                 compactCandidate.unrolledCandidateOffset.collect {
-                    if (it <= 0) {
+                    if (compactCandidate.adapter.itemCount == 0) {
                         windowManager.attachWindow(KeyboardWindow)
                     } else {
                         candidateLayout.resetPosition()

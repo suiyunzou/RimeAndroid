@@ -3,6 +3,7 @@ package com.osfans.trime.ime.smart
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Rect
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.HapticFeedbackConstants
@@ -10,6 +11,7 @@ import android.view.View
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import com.osfans.trime.core.RimeKeyEvent
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.core.TrimeInputMethodService
@@ -30,6 +32,7 @@ class T9Window(di: DI) : BoardWindow.BarBoardWindow(di) {
     private val scope: ThemeScope by instance()
     private val common: CommonKeyboardActionListener by instance()
     private val displayPrefs by lazy { ReferenceDisplayPrefs(context) }
+    private val bindingHint by lazy { KeyBindingHint(context) }
     private val liquid: LiquidWindow by instance()
     override val title = "九宫格拼音"
     override val allowCandidates = true
@@ -44,6 +47,7 @@ class T9Window(di: DI) : BoardWindow.BarBoardWindow(di) {
 
     private inner class ReferenceKey(val label: String, val hint: String = "", val function: Boolean = false, val footer: Boolean = false, val bindingId: String = label.lowercase()) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val labelInk = Rect()
         private val flick = KeyFlickGesture(resources.displayMetrics.density)
         init { isClickable=true; isFocusable=true; contentDescription=if(hint.isEmpty()) label else "$hint $label" }
         override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -94,13 +98,19 @@ class T9Window(di: DI) : BoardWindow.BarBoardWindow(di) {
             paint.textSize=(if(footer) 25f else if(label.length>3) 18f else 22f)*resources.displayMetrics.scaledDensity*displayPrefs.keyTextSize/24f
             paint.textAlign=Paint.Align.CENTER
             val metrics=paint.fontMetrics
-            canvas.drawText(label,width/2f,height/2f-(metrics.ascent+metrics.descent)/2f,paint)
+            val baseline = height/2f-(metrics.ascent+metrics.descent)/2f
+            canvas.drawText(label,width/2f,baseline,paint)
             val prefs=SmartInputPrefs(context)
-            val binding=if(!GlidePrefs(context).enabled && prefs.flickDirection!=FlickDirection.OFF) prefs.binding(bindingId,prefs.flickDirection==FlickDirection.UP) else null
-            val corner=if(binding!=null)KeyBindingLabels.corner(binding) else hint
-            if(corner.isNotEmpty()) {
-                paint.color=scope.color("key_symbol_color");paint.textSize=9f*resources.displayMetrics.scaledDensity;paint.textAlign=Paint.Align.RIGHT
-                canvas.drawText(corner,width-dp(8).toFloat(),dp(12).toFloat(),paint)
+            val direction = prefs.flickDirection
+            val binding = if (!GlidePrefs(context).enabled && direction != FlickDirection.OFF) {
+                prefs.binding(bindingId, direction == FlickDirection.UP)
+            } else null
+            ViewCompat.setStateDescription(this, KeyBindingLabels.actionHint(binding, direction == FlickDirection.UP))
+            if (binding != null || hint.isNotEmpty()) {
+                paint.getTextBounds(label, 0, label.length, labelInk)
+                val area = RectF(inset + dp(3), inset + dp(1), width - inset - dp(3),
+                    minOf(inset + (height - 2 * inset) * .27f, baseline + labelInk.top - dp(2)))
+                bindingHint.draw(canvas, binding, hint, area, dp(10).toFloat(), scope.color("key_symbol_color"), ascii = false)
             }
         }
         override fun drawableStateChanged() { super.drawableStateChanged(); invalidate() }

@@ -434,8 +434,6 @@ class InputView(
             is RimeMessage.StatusMessage -> broadcaster.onInputStatusUpdate(it.data)
 
             is RimeMessage.CompositionMessage -> {
-                // Keep the response identity before popup-only mode replaces the display text.
-                compactCandidates.captureComposition(it.data)
                 val data = if (candidatesMode == PopupCandidatesMode.ALWAYS_SHOW) {
                     CompositionProto()
                 } else {
@@ -445,6 +443,7 @@ class InputView(
             }
 
             is RimeMessage.BulkCandidatesMessage -> {
+                it.context?.let { context -> compactCandidates.updateCandidates(it.data, context) }
                 broadcaster.onCandidateListUpdate(it.data)
             }
 

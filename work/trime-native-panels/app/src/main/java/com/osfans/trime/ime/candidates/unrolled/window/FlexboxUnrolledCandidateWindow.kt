@@ -11,6 +11,7 @@ import androidx.transition.Slide
 import androidx.transition.Transition
 import com.google.android.flexbox.AlignItems
 import com.google.android.flexbox.FlexboxLayoutManager
+import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.JustifyContent
 import com.osfans.trime.ime.candidates.CandidateViewHolder
 import com.osfans.trime.ime.candidates.unrolled.PagingCandidateViewAdapter
@@ -38,7 +39,7 @@ class FlexboxUnrolledCandidateWindow(di: DI) : BaseUnrolledCandidateWindow(di) {
                     layoutParams =
                         FlexboxLayoutManager
                             .LayoutParams(wrapContent, itemHeight)
-                            .apply { flexGrow = 1f }
+                            .apply { flexGrow = 1f; flexShrink = 0f }
                 }
             }
 
@@ -54,6 +55,7 @@ class FlexboxUnrolledCandidateWindow(di: DI) : BaseUnrolledCandidateWindow(di) {
 
     override val layoutManager by lazy {
         FlexboxLayoutManager(context).apply {
+            flexWrap = FlexWrap.WRAP
             justifyContent = JustifyContent.SPACE_AROUND
             alignItems = AlignItems.FLEX_START
         }

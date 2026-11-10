@@ -345,7 +345,15 @@ class Rime :
         }
         when (val candidates = response.candidates) {
             is Candidates.Paged -> handleRimeMessage(7, arrayOf(candidates))
-            is Candidates.Bulk -> handleRimeMessage(9, arrayOf(candidates))
+            is Candidates.Bulk -> {
+                // Bind the candidate indices to this response. A recreated view can
+                // miss a schema notification; preedit display can change independently.
+                val message = RimeMessage.BulkCandidatesMessage(
+                    candidates, CandidateContext(compositionCached, response.status.schemaId),
+                )
+                handleRimeMessage(message)
+                messageFlow_.tryEmit(message)
+            }
         }
         handleRimeMessage(8, arrayOf(response.status))
     }

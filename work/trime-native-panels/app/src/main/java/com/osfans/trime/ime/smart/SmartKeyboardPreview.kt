@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.MotionEvent
@@ -16,6 +17,8 @@ class SmartKeyboardPreview(context: Context) : View(context) {
     private val prefs = SmartInputPrefs(context)
     private val displayPrefs = ReferenceDisplayPrefs(context)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val labelInk = Rect()
+    private val bindingHint = KeyBindingHint(context)
     private val boxes = mutableListOf<Pair<String, RectF>>()
     var dark = false
     var gestureUp: Boolean? = null
@@ -128,25 +131,32 @@ class SmartKeyboardPreview(context: Context) : View(context) {
     private fun drawKey(canvas:Canvas,key:String,rect:RectF,keyColor:Int,control:Int,ink:Int){
         val bindingKey=key.lowercase()
         boxes.add(bindingKey to rect)
-        paint.color = if(key.length>1 && key.lowercase() !in listOf("abc","def","ghi","jkl","mno","pqrs","tuv","wxyz")) control else keyColor
+        val faceColor = if(key.length>1 && key.lowercase() !in listOf("abc","def","ghi","jkl","mno","pqrs","tuv","wxyz")) control else keyColor
+        paint.color = faceColor
         canvas.drawRoundRect(rect,dp(6f),dp(6f),paint)
         paint.color=ink
         paint.textAlign=Paint.Align.CENTER
         paint.typeface=if(displayPrefs.keyBold)Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         paint.textSize=dp((if(key.length>1 && key !in listOf("shift","backspace","enter","emoji")) 15f else 21f)*displayPrefs.keyTextSize/24f)
         val label=when(key){ "shift"->"⇧";"backspace"->"⌫";"enter"->"↵";"emoji"->"☻";"space"->"";"qwerty"->"ABC";else->if(prefs.uppercaseLabels)key.uppercase() else key }
+        val baseline = rect.centerY() - (paint.ascent()+paint.descent())/2
+        paint.getTextBounds(label, 0, label.length, labelInk)
+        val labelTop = if (label.isEmpty()) Float.POSITIVE_INFINITY else baseline + labelInk.top
         if (key == "enter") ReferenceReturnIcon.draw(canvas,rect.centerX(),rect.centerY(),minOf(dp(32f),rect.width()*.7f,rect.height()*.76f),ink)
-        else canvas.drawText(label,rect.centerX(),rect.centerY()-(paint.ascent()+paint.descent())/2,paint)
+        else canvas.drawText(label,rect.centerX(),baseline,paint)
         if (key == "space") {
             paint.textSize=dp(12f);paint.textAlign=Paint.Align.RIGHT
             canvas.drawText("中",rect.right-dp(10f),rect.bottom-dp(6f)-paint.descent(),paint)
         }
-        val binding = gestureUp?.let { prefs.binding(bindingKey,it) }
-        val corner = if(binding != null) KeyBindingLabels.corner(binding) else KeyBindingLabels.defaultHint(bindingKey,t9)
-        if(corner.isNotEmpty() && showGestureHints && (gestureUp != null || !GlidePrefs(context).enabled)){
-            paint.typeface=Typeface.DEFAULT
-            paint.textSize=dp(8f);paint.textAlign=Paint.Align.RIGHT
-            canvas.drawText(corner,rect.right-dp(3f),rect.top+dp(9f),paint)
+        if (showGestureHints && (gestureUp != null || !GlidePrefs(context).enabled)) {
+            val binding = gestureUp?.let { prefs.binding(bindingKey, it) }
+            val corner = KeyBindingLabels.defaultHint(bindingKey, t9)
+            if (binding != null || corner.isNotEmpty()) {
+                val area = RectF(rect.left + dp(3f), rect.top + dp(1.5f), rect.right - dp(3f),
+                    minOf(rect.top + rect.height() * .27f, labelTop - dp(2f)))
+                val hintColor = androidx.core.graphics.ColorUtils.blendARGB(ink, faceColor, .3f)
+                bindingHint.draw(canvas, binding, corner, area, dp(10f), hintColor, ascii = false)
+            }
         }
     }
     private var pressedKey: String? = null

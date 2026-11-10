@@ -89,6 +89,9 @@ class KeyboardWindow(di: DI) :
     private var currentKeyboardId = ""
     val allowSmartInput: Boolean
         get() = listOf("email", "rules", "local_rule", "search").none { currentKeyboardId.contains(it) }
+    val localizePunctuation: Boolean
+        get() = allowSmartInput && !editorAsciiRequired &&
+            service.currentInputEditorInfo?.let { it.inputType and InputType.TYPE_MASK_VARIATION != InputType.TYPE_TEXT_VARIATION_URI } == true
     private var lastKeyboardId = ""
     private var lastLockKeyboardId = ""
     @Volatile private var tempAsciiMode: Boolean? = null
@@ -281,7 +284,11 @@ class KeyboardWindow(di: DI) :
             dispatchCapsState(it::setShifted)
 
             val targetMode = editorAsciiRequired || if (it.resetAsciiMode) it.asciiMode else it.lastAsciiMode
-            queueAsciiMode(targetMode, preservePrevious = editorAsciiRequired)
+            // The reference number page is another face of the same keyboard.
+            // Keep the selected language; numeric, email and password fields still force ASCII.
+            if (!theme.isIosStyle || target != "number" || editorAsciiRequired) {
+                queueAsciiMode(targetMode, preservePrevious = editorAsciiRequired)
+            }
 
             currentKeyboard = it
         }

@@ -36,6 +36,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.KeyValue
+import com.osfans.trime.core.Rime
 import com.osfans.trime.core.RimeApi
 import com.osfans.trime.core.RimeKeyMapping
 import com.osfans.trime.core.RimeMessage
@@ -49,6 +50,7 @@ import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.composition.CandidatesView
 import com.osfans.trime.ime.keyboard.InputFeedbackManager
+import com.osfans.trime.ime.smart.ActionKeyDispatcher
 import com.osfans.trime.receiver.RimeIntentReceiver
 import com.osfans.trime.util.any
 import com.osfans.trime.util.findSectionFrom
@@ -711,15 +713,35 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     val panelEditorSessionId: Long get() = inputSessionId
 
+    internal fun clearCompositionOrText() {
+        val sessionId = inputSessionId
+        val connection = currentInputConnection ?: return
+        postEditorJob {
+            // Check after earlier key jobs so a fast flick sees their composition.
+            if (statusCached.isComposing) {
+                clearComposition()
+                return@postEditorJob
+            }
+            Rime.enqueueEditorAction {
+                // Apply after any preceding native commits reach this editor.
+                if (acceptEditorMessages && sessionId == inputSessionId && currentInputConnection === connection) {
+                    ActionKeyDispatcher.execute(connection, "action:clear_all")
+                }
+            }
+        }
+    }
+
     /** Serial editor work after native composition messages, with the originating session checked. */
     @androidx.annotation.MainThread
     fun editPanelText(sessionId: Long = inputSessionId, isActive: () -> Boolean,
+        prepare: RimeApi.() -> Unit = {},
         edit: (android.view.inputmethod.InputConnection) -> Boolean, onResult: (Boolean) -> Unit) {
         val editor = currentInputEditorInfo
         val connection = currentInputConnection
         if (editor == null || connection == null) { onResult(false); return }
         postRimeJob {
             val prepared = sessionId == inputSessionId && runCatching {
+                prepare()
                 if (statusCached.isComposing) commitComposition()
                 true
             }.getOrDefault(false)
@@ -741,11 +763,17 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     /** Panel output follows native commit/preedit messages, on the main-thread collector. */
     @androidx.annotation.MainThread
-    fun commitPanelText(text: String, isActive: () -> Boolean, pairPunctuation: Boolean = false, onResult: (Boolean) -> Unit) {
-        editPanelText(isActive = isActive, edit = { connection ->
-            if (pairPunctuation && text.length == 1 &&
-                com.osfans.trime.ime.smart.PairPunctuationHandler.insertPair(connection, text[0])) true
-            else commitTextWithResult(text)
+    fun commitPanelText(text: String, isActive: () -> Boolean, pairPunctuation: Boolean = false,
+        localizePunctuation: Boolean = false, onResult: (Boolean) -> Unit) {
+        var output = text
+        editPanelText(isActive = isActive, prepare = {
+            if (localizePunctuation && com.osfans.trime.ime.smart.KeyboardPunctuation.isLocalizable(text)) {
+                output = com.osfans.trime.ime.smart.KeyboardPunctuation.localized(text, statusCached.isAsciiMode)
+            }
+        }, edit = { connection ->
+            if (pairPunctuation && output.length == 1 &&
+                com.osfans.trime.ime.smart.PairPunctuationHandler.insertPair(connection, output[0])) true
+            else commitTextWithResult(output)
         }, onResult = onResult)
     }
 

@@ -99,6 +99,7 @@ sealed class RimeMessage<T>(
 
     data class BulkCandidatesMessage(
         override val data: Candidates.Bulk,
+        val context: CandidateContext? = null,
     ) : RimeMessage<Candidates.Bulk>(data) {
         override val messageType = MessageType.Candidate
     }
