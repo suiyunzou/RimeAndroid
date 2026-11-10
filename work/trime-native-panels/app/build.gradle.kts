@@ -163,6 +163,7 @@ dependencies {
     implementation(libs.splitties.views.recyclerview)
     implementation(libs.aboutlibraries.core)
     implementation(libs.iconics.core)
+    implementation(files("libs/sherpa-onnx.aar"))
     implementation(libs.community.material.typeface) {
         artifact { type = "aar" }
     }

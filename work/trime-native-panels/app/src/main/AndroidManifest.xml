@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
     xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Optional, user-enabled suggestions from newly received verification messages. -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />

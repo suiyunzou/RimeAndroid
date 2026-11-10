@@ -475,22 +475,8 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
             }
 
             private fun switchToVoiceInputMethod() {
-                val pkgName = prefs.general.preferredVoiceInput.getValue()
-                val voiceInputSubType = if (pkgName.isNotEmpty()) {
-                    InputMethodUtils.voiceInputMethods().find {
-                        it.first.packageName == pkgName
-                    }?.let {
-                        it.first.id to it.second
-                    } ?: InputMethodUtils.firstVoiceInput()
-                } else {
-                    InputMethodUtils.firstVoiceInput()
-                }
-                if (voiceInputSubType != null) {
-                    val (id, subType) = voiceInputSubType
-                    InputMethodUtils.switchInputMethod(service, id, subType)
-                } else {
-                    service.toast(R.string.no_voice_input_installed)
-                }
+                // Native, 100% on-device offline voice recognition (Sherpa-ONNX)
+                com.osfans.trime.ime.voice.OfflineVoiceManager.toggleListening(service)
             }
 
             private fun handleDefaultKeyAction(action: KeyAction) {
