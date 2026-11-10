@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "mingren",
+      "title": "万象 · 名人",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/amzxyz/rime-wanxiang/wanxiang/dicts/mingren.dict.yaml",
+      "bytes": 667268,
+      "sha256": "c4818aeceb18c98ddb0cde4947404c329ade2de69064d9b2729f8dd1ddf1f1eb",
+      "minAppVersion": 1
+    },
+    {
+      "id": "yiren",
+      "title": "万象 · 艺人",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/amzxyz/rime-wanxiang/wanxiang/dicts/yiren.dict.yaml",
+      "bytes": 423827,
+      "sha256": "2fa45bf1ce6dc396e81261903d8bd50eac11c7f18b28d692c18d89790968057c",
+      "minAppVersion": 1
+    },
+    {
+      "id": "duoyin",
+      "title": "万象 · 多音字",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/amzxyz/rime-wanxiang/wanxiang/dicts/duoyin.dict.yaml",
+      "bytes": 137474,
+      "sha256": "f89a50949e93ac60746aa3058f67bc3a6bbd4a9a5c2d43652df0cb2ae973d555",
+      "minAppVersion": 1
+    }
+  ]
+}

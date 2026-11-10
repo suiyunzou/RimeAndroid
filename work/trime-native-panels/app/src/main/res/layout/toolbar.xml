@@ -11,12 +11,16 @@ SPDX-License-Identifier: GPL-3.0-or-later
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/appBar"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
-    <androidx.appcompat.widget.Toolbar
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent">
+
+    <!-- The reference look is a light bar with a centred title and a 「‹ 返回」 capsule.
+         The colours are applied at runtime from SettingsPalette so day/night stays in sync
+         with the settings pages instead of using the old dark colorPrimary bar. -->
+    <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/colorPrimary"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-        app:popupTheme="@style/ThemeOverlay.AppCompat.DayNight" />
+        app:titleCentered="true" />
+
 </com.google.android.material.appbar.AppBarLayout>

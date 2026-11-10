@@ -17,12 +17,19 @@ import com.chad.library.adapter4.BaseQuickAdapter
 import com.osfans.trime.core.SchemaItem
 import com.osfans.trime.ui.common.OnItemChangedListener
 import com.osfans.trime.ui.main.MainViewModel
+import com.osfans.trime.ui.settingskit.Palette
 
 open class SchemaListAdapter(
     items: List<SchemaItem>,
 ) : BaseQuickAdapter<SchemaItem, SchemaListAdapter.ViewHolder>(items) {
     var multiselect = false
         private set
+
+    /** 列表配色由 [SchemaListUi] 注入，用于刷新卡片与勾选框的日夜模式颜色。 */
+    var palette: Palette? = null
+
+    /** 拖动排序后通知页面把顺序标记为待持久化。 */
+    var onOrderChanged: (() -> Unit)? = null
 
     private val selected = mutableListOf<SchemaItem>()
 
@@ -45,10 +52,10 @@ open class SchemaListAdapter(
     }
 
     inner class ViewHolder(
-        ui: SchemaListEntryUi,
-    ) : RecyclerView.ViewHolder(ui.root) {
-        val checkBox = ui.checkBox
-        val nameText = ui.nameText
+        val entryUi: SchemaListEntryUi,
+    ) : RecyclerView.ViewHolder(entryUi.root) {
+        val checkBox = entryUi.checkBox
+        val nameText = entryUi.nameText
     }
 
     override fun onCreateViewHolder(
@@ -64,16 +71,36 @@ open class SchemaListAdapter(
     ) {
         item ?: return
         with(holder) {
+            palette?.let { entryUi.applyPalette(it) }
             nameText.text = item.name
+            entryUi.bindSummary(item.id)
+            // 先清空监听再回填状态，避免复用 ViewHolder 时把上一条目的选中状态写错
+            checkBox.setOnCheckedChangeListener(null)
             checkBox.isVisible = multiselect
-            checkBox.isChecked = selected.map(SchemaItem::id).contains(item.id)
+            checkBox.isChecked = selected.any { it.id == item.id }
             checkBox.setOnCheckedChangeListener { _, isChecked ->
                 select(item, isChecked)
             }
             nameText.setOnClickListener {
-                checkBox.toggle()
+                if (multiselect) checkBox.toggle()
             }
         }
+    }
+
+    /**
+     * 上下拖动排序：位置交换交给 BaseQuickAdapter 维护，随后由页面负责持久化。
+     * 多选模式下不允许拖动，避免和批量删除的操作混淆。
+     */
+    fun moveItem(
+        fromPosition: Int,
+        toPosition: Int,
+    ): Boolean {
+        if (multiselect) return false
+        if (fromPosition == toPosition) return false
+        if (fromPosition !in items.indices || toPosition !in items.indices) return false
+        move(fromPosition, toPosition, null)
+        onOrderChanged?.invoke()
+        return true
     }
 
     private fun select(

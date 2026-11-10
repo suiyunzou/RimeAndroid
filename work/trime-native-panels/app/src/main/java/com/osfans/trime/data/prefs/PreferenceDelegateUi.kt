@@ -17,17 +17,21 @@ abstract class PreferenceDelegateUi<T : Preference>(
     val key: String,
     private val enableUiOn: (() -> Boolean)? = null,
 ) {
+    abstract val title: Int
+
+    open val summary: Int? get() = null
+
     abstract fun createUi(context: Context): T
 
     fun isEnabled() = enableUiOn?.invoke() ?: true
 
     class StringLike(
         @StringRes
-        val title: Int,
+        override val title: Int,
         key: String,
         val defaultValue: String,
         @StringRes
-        val summary: Int? = null,
+        override val summary: Int? = null,
         enableUiOn: (() -> Boolean)? = null,
     ) : PreferenceDelegateUi<Preference>(key, enableUiOn) {
         override fun createUi(context: Context) = Preference(context).apply {
@@ -44,11 +48,11 @@ abstract class PreferenceDelegateUi<T : Preference>(
 
     class Switch(
         @StringRes
-        val title: Int,
+        override val title: Int,
         key: String,
         val defaultValue: Boolean,
         @StringRes
-        val summary: Int? = null,
+        override val summary: Int? = null,
         enableUiOn: (() -> Boolean)? = null,
     ) : PreferenceDelegateUi<SwitchPreference>(key, enableUiOn) {
         override fun createUi(context: Context) = SwitchPreference(context).apply {
@@ -65,7 +69,7 @@ abstract class PreferenceDelegateUi<T : Preference>(
 
     class StringList<T : Any>(
         @StringRes
-        val title: Int,
+        override val title: Int,
         key: String,
         val defaultValue: T,
         val serializer: PreferenceDelegate.Serializer<T>,
@@ -89,7 +93,7 @@ abstract class PreferenceDelegateUi<T : Preference>(
 
     class UniversalStringList<T : Any>(
         @StringRes
-        val title: Int,
+        override val title: Int,
         key: String,
         val defaultValue: T,
         val entryValues: (() -> List<String>),
@@ -111,7 +115,7 @@ abstract class PreferenceDelegateUi<T : Preference>(
 
     class EditText(
         @StringRes
-        val title: Int,
+        override val title: Int,
         key: String,
         val defaultValue: String,
         @StringRes
@@ -134,7 +138,7 @@ abstract class PreferenceDelegateUi<T : Preference>(
 
     class EditTextInt(
         @StringRes
-        val title: Int,
+        override val title: Int,
         key: String,
         val defaultValue: Int,
         val min: Int,
@@ -158,7 +162,7 @@ abstract class PreferenceDelegateUi<T : Preference>(
 
     class SeekBarInt(
         @StringRes
-        val title: Int,
+        override val title: Int,
         key: String,
         val defaultValue: Int,
         val min: Int,

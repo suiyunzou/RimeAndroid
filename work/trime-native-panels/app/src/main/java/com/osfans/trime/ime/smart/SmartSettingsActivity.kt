@@ -17,7 +17,6 @@ import android.graphics.Path
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.DragEvent
 import android.view.Gravity
 import android.view.MotionEvent
@@ -26,7 +25,6 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -84,6 +82,10 @@ class SmartSettingsActivity : Activity() {
     private val trackColor get()=palette.track
     private fun dp(v:Int)=SettingsPalette.dp(this,v)
     private fun rounded(color:Int,radius:Int=SettingsPalette.RADIUS_GROUP)=GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat()}
+    /** White (dark: #2C2C2E) capsule with a hairline border, as in the reference top bar. */
+    private fun pillBackground():GradientDrawable=rounded(if(dark)0xff2c2c2e.toInt() else 0xffffffff.toInt(),24).apply{
+        setStroke(dp(1),if(dark)0xff3a3a3c.toInt() else 0xffe4e4e9.toInt())
+    }
     private fun text(value:String,size:Float=18f,color:Int=ink)=TextView(this).apply{text=value;textSize=size;setTextColor(color);gravity=Gravity.CENTER_VERTICAL}
     override fun onCreate(state:Bundle?){
         setTheme(android.R.style.Theme_Material_NoActionBar)
@@ -131,19 +133,22 @@ class SmartSettingsActivity : Activity() {
     private fun render(){
         savePageScroll()
         dark=resolvedDark(selectedUiMode())
+        // The palette/ink/muted/... getters all read builder.palette, so the builder must exist
+        // before any of them is touched. Initialising it after the status-bar colours used to
+        // crash on launch with "lateinit property builder has not been initialized".
+        builder=SettingsBuilder(this,dark);body=builder.body
         window.statusBarColor=backgroundColor;window.navigationBarColor=backgroundColor
         window.decorView.systemUiVisibility=if(!dark && Build.VERSION.SDK_INT>=26) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
-        builder=SettingsBuilder(this,dark);body=builder.body
         root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(backgroundColor);fitsSystemWindows=true}
         setContentView(root)
-        val heading=when(page){"display"->"显示";"keys"->"按键";"wheel"->"空格轮盘";"input"->"输入";else->"同文输入法"}
+        val heading=when(page){"display"->"显示";"keys"->"按键";"wheel"->"空格轮盘";"input"->"输入";else->"键盘设置"}
         val top=FrameLayout(this).apply{setPadding(dp(16),dp(7),dp(16),dp(7))}
-        val back=text("‹ 返回",19f).apply{gravity=Gravity.CENTER;background=rounded(trackColor,24);setOnClickListener{onBackPressed()};contentDescription="返回"}
+        val back=text("‹ 返回",19f).apply{gravity=Gravity.CENTER;background=pillBackground();setOnClickListener{onBackPressed()};contentDescription="返回"}
         top.addView(back,FrameLayout.LayoutParams(dp(83),dp(40),Gravity.START or Gravity.CENTER_VERTICAL))
         top.addView(text(heading,19f).apply{gravity=Gravity.CENTER;typeface=Typeface.DEFAULT_BOLD},FrameLayout.LayoutParams(dp(150),dp(44),Gravity.CENTER))
         if(page=="wheel")top.addView(text("↶",27f).apply{gravity=Gravity.CENTER;background=rounded(trackColor,22);contentDescription="恢复默认轮盘";setOnClickListener{prefs.wheelSlots=listOf("time","traditional","symbols","clipboard","settings");prefs.wheelStyle="rainbow";render()}},FrameLayout.LayoutParams(dp(42),dp(42),Gravity.END or Gravity.CENTER_VERTICAL))
         root.addView(top,LinearLayout.LayoutParams(-1,dp(58)))
-        val scroll=ScrollView(this).apply{isFillViewport=true;clipToPadding=false;setPadding(dp(16),dp(7),dp(16),dp(24))}
+        val scroll=ScrollView(this).apply{isFillViewport=true;clipToPadding=false;isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;setPadding(dp(16),dp(7),dp(16),dp(24))}
         scroll.addView(body);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         when(page){"display"->displayPage();"keys"->keysPage();"wheel"->wheelPage();"input"->inputPage();else->homePage()}
         pageScrollView=scroll;renderedPage=page
@@ -153,9 +158,8 @@ class SmartSettingsActivity : Activity() {
     private fun space(h:Int=16){builder.space(h)}
     private fun section(title:String){builder.section(title)}
     private fun group():LinearLayout=builder.group()
-    private fun row(group:LinearLayout?,title:String,value:String="",action:(()->Unit)?=null):LinearLayout=builder.row(group,title,value,action)
-    private fun toggle(group:LinearLayout?,title:String,value:Boolean,action:(Boolean)->Unit){builder.toggle(group,title,value,action)}
-    private fun segments(labels:List<String>,selected:Int,onSelect:(Int)->Unit):LinearLayout=builder.segments(labels,selected,onSelect)
+    private fun row(group:LinearLayout?,title:String,value:String="",action:(()->Unit)?=null):LinearLayout=builder.row(group,title,value,onClick=action)
+    private fun toggle(group:LinearLayout?,title:String,value:Boolean,action:(Boolean)->Unit){builder.toggle(group,title,value,action=action)}
     private fun preview(touch:((String)->Unit)?=null,up:Boolean?=null):SmartKeyboardPreview{
         val p=SmartKeyboardPreview(this).apply{dark=this@SmartSettingsActivity.dark;onKey=touch;gestureUp=up}
         p.keyboardBodyHeight=keyboardHeight();body.addView(p,LinearLayout.LayoutParams(-1,-2));return p
@@ -163,7 +167,6 @@ class SmartSettingsActivity : Activity() {
     private fun keyboardHeight():Int=extra.getInt("reference_keyboard_height",212).coerceIn(144,320)
     private fun homePage(){
         space(7)
-        inputStatusCard()
         homeCard("input","输入","拼音纠错与中英文混输",0xff169bdd.toInt()){open("input")}
         homeCard("display","显示","候选字号与键盘外观",0xff8b75db.toInt()){open("display")}
         homeCard("layout","键盘布局","全键盘或九宫格",0xff8b8e96.toInt()){
@@ -182,18 +185,6 @@ class SmartSettingsActivity : Activity() {
             action=Intent.ACTION_RUN
             putExtra(MainActivity.EXTRA_SETTINGS_ROUTE,NavigationRoute.Advanced as android.os.Parcelable)
         })
-    }
-    private fun inputStatusCard(){
-        val selected=Settings.Secure.getString(contentResolver,Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith("$packageName/")==true
-        val enabled=(getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).enabledInputMethodList.any{it.packageName==packageName}
-        val card=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(12));background=rounded(groupColor,23)}
-        card.addView(ImageView(this).apply{setImageDrawable(applicationInfo.loadIcon(packageManager));importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO},LinearLayout.LayoutParams(dp(51),dp(51)))
-        val info=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(13),0,0,0)}
-        info.addView(text("同文输入法",20f).apply{typeface=Typeface.DEFAULT_BOLD})
-        info.addView(text(if(selected)"✓ 已就绪" else if(enabled)"已启用 · 尚未选用" else "尚未启用",14f,if(selected)0xff238b4e.toInt() else muted).apply{setPadding(0,dp(5),0,0)})
-        card.addView(info,LinearLayout.LayoutParams(0,-2,1f))
-        card.addView(text("试用",17f,Color.WHITE).apply{gravity=Gravity.CENTER;background=rounded(0xff199cde.toInt(),22);setOnClickListener{showInputTrial()};contentDescription="试用输入"},LinearLayout.LayoutParams(dp(62),dp(40)))
-        body.addView(card,LinearLayout.LayoutParams(-1,dp(90)));space(16)
     }
     private fun showInputTrial(){
         val dialog=Dialog(this).apply{requestWindowFeature(Window.FEATURE_NO_TITLE)}
@@ -342,7 +333,7 @@ class SmartSettingsActivity : Activity() {
         val direction=prefs.flickDirection
         gestureUp=direction==FlickDirection.UP
         val demoCard=group().apply{setPadding(dp(12),dp(12),dp(12),dp(12))}
-        demoCard.addView(segments(listOf("关闭","上拨","下拨"),direction.ordinal){prefs.flickDirection=FlickDirection.entries[it];render()})
+        demoCard.addView(builder.segmentsView(listOf("关闭","上拨","下拨"),direction.ordinal){prefs.flickDirection=FlickDirection.entries[it];render()})
         val demonstration=FrameLayout(this).apply{background=rounded(trackColor,16);contentDescription=if(gestureUp)"向上拨动 Q 预览" else "向下拨动 Q 预览"}
         val binding=prefs.binding("q",gestureUp)
         val value=if(binding==null)"1" else KeyBindingLabels.label(binding)
@@ -375,7 +366,7 @@ class SmartSettingsActivity : Activity() {
         }
         space(12);section(if(gestureUp)"↑ 上拨内容" else "↓ 下拨内容")
         val card=group().apply{setPadding(dp(8),dp(10),dp(8),dp(8))}
-        card.addView(segments(listOf("全键盘","九宫格"),if(keyPreviewLayout=="t9")1 else 0){keyPreviewLayout=if(it==1)"t9" else "qwerty";render()})
+        card.addView(builder.segmentsView(listOf("全键盘","九宫格"),if(keyPreviewLayout=="t9")1 else 0){keyPreviewLayout=if(it==1)"t9" else "qwerty";render()})
         val keyboard=SmartKeyboardPreview(this).apply{
             dark=this@SmartSettingsActivity.dark;gestureUp=this@SmartSettingsActivity.gestureUp
             layoutOverride=keyPreviewLayout;showCandidates=false;keyboardBodyHeight=212
@@ -427,7 +418,13 @@ class SmartSettingsActivity : Activity() {
     private fun wheelPage(){
         // The reference keeps its live preview and segmented control visible
         // while only the lower settings area scrolls.
-        root.removeViewAt(root.childCount-1)
+        (root.getChildAt(root.childCount-1) as? android.view.ViewGroup)?.let{old->
+            root.removeView(old)
+            // Keep builder.body attached so group()/row()/toggle() in wheelFunctions and
+            // wheelAppearance still append to the visible settings area. Creating a fresh
+            // LinearLayout here made all wheel settings render into a detached view.
+            old.removeView(body)
+        }
         val frame=FrameLayout(this)
         val keyboard=SmartKeyboardPreview(this).apply{dark=this@SmartSettingsActivity.dark;dimmed=true;showBottomBar=false;isClickable=false}
         frame.addView(keyboard,FrameLayout.LayoutParams(-1,-1))
@@ -438,10 +435,9 @@ class SmartSettingsActivity : Activity() {
         wheel.setPreviewMode(true){action->Toast.makeText(this,SmartInputPrefs.LABELS[action]?:RadialMenuGeometry.TIME_LABELS.getOrNull(RadialMenuGeometry.TIME_ACTIONS.indexOf(action))?:action,Toast.LENGTH_SHORT).show()}
         wheel.configurePreview(prefs.wheelSlots,prefs.wheelStyle,prefs.originGlow,prefs.followFinger)
         wheel.configureAppearance(prefs.wheelIconVisibility,prefs.wheelFocusStyle,prefs.wheelCursorPlacement,prefs.wheelMotionStyle)
-        root.addView(segments(listOf("功能","外观"),wheelTab){wheelTab=it;wheelSettingsScroll=0;render()},LinearLayout.LayoutParams(-1,dp(34)).apply{setMargins(dp(20),dp(10),dp(20),dp(10))})
+        root.addView(builder.segmentsView(listOf("功能","外观"),wheelTab){wheelTab=it;wheelSettingsScroll=0;render()},LinearLayout.LayoutParams(-1,dp(34)).apply{setMargins(dp(20),dp(10),dp(20),dp(10))})
         val restoreScroll=wheelSettingsScroll
-        val scroll=ScrollView(this).apply{isFillViewport=false;clipToPadding=false;setPadding(dp(20),0,dp(20),dp(20))}
-        body=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        val scroll=ScrollView(this).apply{isFillViewport=false;clipToPadding=false;isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;setPadding(dp(20),0,dp(20),dp(20))}
         scroll.addView(body);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         if(wheelTab==0){installWheelDrag(frame,wheel);wheelFunctions()}else wheelAppearance()
         scroll.setOnScrollChangeListener{_,_,y,_,_->wheelSettingsScroll=y}
@@ -629,7 +625,7 @@ class SmartSettingsActivity : Activity() {
         val dialog=Dialog(this).apply{requestWindowFeature(Window.FEATURE_NO_TITLE)}
         val panel=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(12),dp(14),dp(10));background=rounded(groupColor,26)}
         panel.addView(text(title,18f).apply{gravity=Gravity.CENTER;typeface=Typeface.DEFAULT_BOLD},LinearLayout.LayoutParams(-1,dp(44)))
-        val scroll=ScrollView(this);val list=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL};items.forEachIndexed{i,value->list.addView(text(value+if(i==selected)"  ✓" else "",18f).apply{gravity=Gravity.CENTER;setOnClickListener{dialog.dismiss();action(i)}},LinearLayout.LayoutParams(-1,dp(48)))};scroll.addView(list);panel.addView(scroll,LinearLayout.LayoutParams(-1,if(items.size>8)dp(360) else -2))
+        val scroll=ScrollView(this).apply{isVerticalScrollBarEnabled=false};val list=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL};items.forEachIndexed{i,value->list.addView(text(value+if(i==selected)"  ✓" else "",18f).apply{gravity=Gravity.CENTER;setOnClickListener{dialog.dismiss();action(i)}},LinearLayout.LayoutParams(-1,dp(48)))};scroll.addView(list);panel.addView(scroll,LinearLayout.LayoutParams(-1,if(items.size>8)dp(360) else -2))
         panel.addView(text("取消",18f,muted).apply{gravity=Gravity.CENTER;setOnClickListener{dialog.dismiss()}},LinearLayout.LayoutParams(-1,dp(45)));dialog.setContentView(panel);dialog.window?.setBackgroundDrawableResource(android.R.color.transparent);dialog.show();dialog.window?.setLayout(resources.displayMetrics.widthPixels-dp(48),-2)
     }
 }

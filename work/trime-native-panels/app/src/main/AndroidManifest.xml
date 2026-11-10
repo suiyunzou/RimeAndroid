@@ -16,7 +16,20 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <!-- User-initiated dictionary/model downloads; typing and audio remain local. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <!--
+        ACCESS_NETWORK_STATE 是普通权限（normal），安装时不弹窗、用户无感，
+        仅用于读取「当前是否联网 / 是否 Wi-Fi」，不涉及任何用户数据。
+
+        此前这里用 tools:node="remove" 主动移除了它，导致两类实际故障：
+          1. WorkManager 初始化时无条件调用 ConnectivityManager.getActiveNetworkInfo()，
+             没有该权限会抛 SecurityException 并 FATAL EXCEPTION 杀死进程
+             （K80 实测：androidx.work.impl.constraints.trackers.NetworkStateTracker）；
+          2. 任何带 setRequiredNetworkType 的 WorkRequest 会被系统直接拒绝调度
+             （SecurityException: ACCESS_NETWORK_STATE required for jobs with a
+             connectivity constraint），后台任务永远不执行。
+        为保证「自动更新」可用且不崩溃，这里恢复该权限。
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <queries>
         <intent>

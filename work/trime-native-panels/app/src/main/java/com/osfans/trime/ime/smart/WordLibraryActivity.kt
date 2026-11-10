@@ -13,7 +13,6 @@ import android.provider.OpenableColumns
 import android.system.Os
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -27,15 +26,16 @@ import com.osfans.trime.ui.settingskit.SettingsBuilder
 import com.osfans.trime.ui.settingskit.SettingsPalette
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.osfans.trime.worker.PackAutoUpdateWork
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import timber.log.Timber
 
 /**
  * 词库页：公开词包（版本 / 上次检查 / 进度 / 失败原因 / 重试 / 自动更新）、
@@ -179,6 +179,8 @@ class WordLibraryActivity : Activity() {
 
         val builder = SettingsBuilder(this, dark)
         val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
             isFillViewport = true
             clipToPadding = false
             setPadding(dp(16), dp(7), dp(16), dp(24))
@@ -330,6 +332,9 @@ class WordLibraryActivity : Activity() {
         // 自动更新：默认关闭，仅 Wi-Fi。
         builder.toggle(card, "自动更新", autoUpdateEnabled()) { enabled ->
             setAutoUpdate(enabled)
+            // 把开关状态同步给 WorkManager：开启才真正入队周期任务，关闭则取消。
+            runCatching { PackAutoUpdateWork.sync(this) }
+                .onFailure { Timber.w(it, "同步后台更新任务失败") }
             resultLine = if (enabled) "已开启自动更新：仅在 Wi-Fi 且已联网时检查" else "已关闭自动更新"
             resultIsFailure = false
             render()
@@ -379,6 +384,14 @@ class WordLibraryActivity : Activity() {
                 }
                 resultLine = result.display()
                 resultIsFailure = result.isFailure
+                // 远端清单不可达时，用随包内置清单兜底展示，并明确告知原因，
+                // 而不是只给一句"网络错误"让人以为功能坏了。
+                if (result is UpdateResult.NetworkError) {
+                    val bundled = readBundledManifest(this@WordLibraryActivity)
+                    if (bundled != null) {
+                        resultLine = "${result.message}；已改用随包内置清单，已有词包未改动"
+                    }
+                }
                 packState = withContext(Dispatchers.IO) { packs.read() }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
@@ -662,9 +675,25 @@ class WordLibraryActivity : Activity() {
         private const val LEGACY_PREVIEW = 20
         private const val ACCENT_LIGHT = 0xFF1976D2.toInt()
 
-        /** 词包清单地址。与 OnlineDictionarySource 一致：只发 GET，不携带用户数据。 */
-        private const val MANIFEST_URL =
-            "https://raw.githubusercontent.com/amzxyz/rime-wanxiang/wanxiang/packs/manifest.json"
+        /**
+         * 词包清单地址。与本仓库其他网络请求一致：只发 GET，不携带任何用户数据。
+         *
+         * 该地址由本仓库自行发布（`packs/manifest.json`），离线时由随包内置的
+         * `assets/local-dictionary/manifest.json` 兜底，见 [readBundledManifest]。
+         */
+        const val MANIFEST_URL: String =
+            "https://raw.githubusercontent.com/suiyunzou/RimeAndroid/main/packs/manifest.json"
+
+        /** 随包内置的清单，作为远端不可达时的兜底，保证词库页永远有内容可展示。 */
+        private const val BUNDLED_MANIFEST_ASSET = "local-dictionary/manifest.json"
+
+        /**
+         * 读取内置清单文本。仅用于远端不可达时的降级展示与「已装版本」比对，
+         * 不覆盖任何用户数据；失败返回 null。
+         */
+        fun readBundledManifest(context: android.content.Context): String? = runCatching {
+            context.assets.open(BUNDLED_MANIFEST_ASSET).bufferedReader().use { it.readText() }
+        }.getOrNull()
 
         private val ACCENT get() = ACCENT_LIGHT
     }

@@ -8,87 +8,90 @@ package com.osfans.trime.ui.main.settings.theme
 
 import android.content.ClipData
 import android.content.Intent
-import android.os.Bundle
-import android.view.ViewGroup
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.isVisible
-import androidx.core.view.updateLayoutParams
+import android.graphics.Typeface
+import android.widget.LinearLayout
+import android.widget.TextView
 import com.osfans.trime.R
 import com.osfans.trime.data.theme.ThemeDiagnostics
 import com.osfans.trime.data.theme.ThemeManager
-import com.osfans.trime.databinding.ActivityThemeDiagnosticsBinding
+import com.osfans.trime.ui.settingskit.SettingsBuilder
+import com.osfans.trime.ui.settingskit.SettingsKitActivity
 import com.osfans.trime.util.DeviceInfo
 import com.osfans.trime.util.toast
 import splitties.systemservices.clipboardManager
-import splitties.views.recyclerview.verticalLayoutManager
 
 /**
  * Shows what the static checks of [ThemeDiagnostics] found in the theme in
  * use, and copies or shares them as a report.
  */
-class ThemeDiagnosticsActivity : AppCompatActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        val binding = ActivityThemeDiagnosticsBinding.inflate(layoutInflater)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, windowInsets ->
-            val systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            binding.root.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                leftMargin = systemBars.left
-                rightMargin = systemBars.right
-                bottomMargin = systemBars.bottom
-            }
-            binding.diagnosticsToolbar.toolbar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                topMargin = systemBars.top
-            }
-            windowInsets
-        }
-        WindowCompat
-            .getInsetsController(window, window.decorView)
-            .isAppearanceLightStatusBars = false
+class ThemeDiagnosticsActivity : SettingsKitActivity() {
+    override fun pageTitle(): String = getString(R.string.theme_diagnostics)
 
-        setContentView(binding.root)
+    override fun buildPage(builder: SettingsBuilder) {
         val theme = ThemeManager.activeTheme
         val findings = ThemeManager.activeFindings
         val themeId = ThemeManager.prefs.selectedTheme.getValue()
         val report = DeviceInfo.get(this) + ThemeDiagnostics.format(themeId, theme.name, findings)
 
-        with(binding) {
-            setSupportActionBar(diagnosticsToolbar.toolbar)
-            supportActionBar!!.apply {
-                setDisplayHomeAsUpEnabled(true)
-                setTitle(R.string.theme_diagnostics)
-                subtitle = theme.name
-            }
-            findingsList.layoutManager = verticalLayoutManager()
-            findingsList.adapter = ThemeDiagnosticListAdapter(findings.orEmpty())
-            emptyState.isVisible = findings.isNullOrEmpty()
-            emptyState.setText(
-                if (findings == null) {
-                    R.string.theme_diagnostics_unchecked
-                } else {
-                    R.string.theme_diagnostics_no_findings
-                },
+        builder.space(7)
+        val summary = builder.group()
+        builder.row(summary, "主题", value = theme.name)
+        builder.row(summary, "配置标识", value = themeId)
+        builder.row(
+            summary,
+            "检查结果",
+            value = when {
+                findings == null -> "未运行"
+                findings.isEmpty() -> "没有问题"
+                else -> "${findings.size} 项"
+            },
+        )
+        builder.space(12)
+        builder.section("发现")
+        val card = builder.group()
+        if (findings.isNullOrEmpty()) {
+            builder.row(
+                card,
+                getString(
+                    if (findings == null) {
+                        R.string.theme_diagnostics_unchecked
+                    } else {
+                        R.string.theme_diagnostics_no_findings
+                    },
+                ),
             )
-            copyButton.setOnClickListener {
-                clipboardManager.setPrimaryClip(ClipData.newPlainText("theme-diagnostics", report))
-                if (clipboardManager.hasPrimaryClip()) {
-                    toast(R.string.copy_done)
-                }
-            }
-            shareButton.setOnClickListener {
-                val target =
-                    Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, getString(R.string.theme_diagnostics))
-                        putExtra(Intent.EXTRA_TEXT, report)
-                    }
-                startActivity(Intent.createChooser(target, getString(R.string.share)))
+        } else {
+            findings.forEach { finding -> findingRow(card, finding) }
+        }
+        builder.space(12)
+        builder.button("复制报告") {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("theme-diagnostics", report))
+            if (clipboardManager.hasPrimaryClip()) {
+                toast(R.string.copy_done)
             }
         }
+        builder.button("分享报告") {
+            val target =
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, getString(R.string.theme_diagnostics))
+                    putExtra(Intent.EXTRA_TEXT, report)
+                }
+            startActivity(Intent.createChooser(target, getString(R.string.share)))
+        }
+    }
+
+    /** 一条诊断：消息在上，主题内路径以等宽小字在下；警告用正文色，提示淡一些。 */
+    private fun findingRow(
+        parent: LinearLayout,
+        finding: ThemeDiagnostics.Finding,
+    ) {
+        val warning = finding.severity == ThemeDiagnostics.Severity.WARNING
+        val title = if (warning) "⚠  ${finding.message}" else finding.message
+        val row = builder.row(parent, title, summary = finding.path)
+        val texts = row.getChildAt(0) as? LinearLayout ?: return
+        val message = texts.getChildAt(0) as? TextView ?: return
+        message.setTextColor(if (warning) palette.ink else palette.muted)
+        (texts.getChildAt(1) as? TextView)?.typeface = Typeface.MONOSPACE
     }
 }

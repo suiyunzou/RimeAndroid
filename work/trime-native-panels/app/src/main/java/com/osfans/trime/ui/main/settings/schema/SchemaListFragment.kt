@@ -35,6 +35,8 @@ class SchemaListFragment :
         resetDustman()
         ui.adapter.setViewModel(viewModel)
         ui.adapter.addOnItemChangedListener(this)
+        // 拖动排序不增减条目，需要单独把顺序标记为待持久化
+        ui.adapter.onOrderChanged = { dustman.forceDirty() }
         viewModel.enableToolbarEditButton(enabled.isNotEmpty()) {
             ui.adapter.enterMultiSelect(requireActivity().onBackPressedDispatcher)
         }

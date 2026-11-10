@@ -49,6 +49,7 @@ constructor(
         }
 
     init {
+        isHorizontalScrollBarEnabled = false
         add(
             recyclerView,
             lParams(wrapContent, matchParent),

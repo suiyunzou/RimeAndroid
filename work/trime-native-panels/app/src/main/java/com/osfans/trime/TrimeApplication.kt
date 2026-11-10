@@ -21,6 +21,7 @@ import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.data.db.ClipboardHelper
 import com.osfans.trime.data.db.CollectionHelper
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.data.prefs.SmartSettingsFacade
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.receiver.RimeIntentReceiver
@@ -30,8 +31,9 @@ import com.osfans.trime.worker.BackgroundSyncWork
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 import splitties.systemservices.userManager
+import com.osfans.trime.worker.PackAutoUpdateWork
+import kotlinx.coroutines.plus
 import timber.log.Timber
 import java.io.File
 import kotlin.system.exitProcess
@@ -186,8 +188,24 @@ class TrimeApplication : Application() {
                 AppPrefs.defaultInstance().syncToDeviceEncryptedStorage()
                 ThemeManager.syncToDeviceEncryptedStorage()
             }
+            // 收敛重复设置：把 smart_input 里与原生重复的键一次性对齐到权威源
+            // （深浅色以 advanced.ui_mode 为准），并删除旧键。幂等、逐键隔离，
+            // 未迁移时也会把记录留空，不会误写真实数据。
+            runCatching {
+                val record = SmartSettingsFacade.fromDefault(ctx).migrate()
+                if (record.conflicts.isNotEmpty() || record.failures.isNotEmpty()) {
+                    Timber.i(
+                        "SmartSettings migration: %d conflicts, %d failures",
+                        record.conflicts.size,
+                        record.failures.size,
+                    )
+                }
+            }.onFailure { Timber.w(it, "SmartSettings migration skipped") }
             registerBroadcastReceiver()
             startWorkManager()
+            // 让「自动更新」开关真正生效：开启则入队周期任务，关闭则确保取消。
+            runCatching { PackAutoUpdateWork.sync(ctx) }
+                .onFailure { Timber.w(it, "PackAutoUpdate 同步失败") }
         } catch (e: Exception) {
             e.fillInStackTrace()
             return

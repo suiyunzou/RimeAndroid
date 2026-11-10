@@ -5,55 +5,48 @@
 
 package com.osfans.trime.ui.main
 
-import android.app.AlertDialog
-import android.os.Bundle
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
-import androidx.preference.Preference
 import com.osfans.trime.R
-import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.settingskit.SettingsBuilder
+import com.osfans.trime.ui.settingskit.SettingsPageFragment
 import com.osfans.trime.util.AppUtils
 import com.osfans.trime.util.Logcat
 
-class DeveloperFragment : PaddingPreferenceFragment() {
+/**
+ * 「开发者」页面：实时日志与清空日志。
+ *
+ * 行为与旧页面一致：第一行打开 LogActivity，第二行弹确认框，确认后清空 logcat。
+ * 页面顶栏由 MainActivity 提供。
+ */
+class DeveloperFragment : SettingsPageFragment() {
     private val viewModel: MainViewModel by activityViewModels()
 
-    override fun onCreatePreferences(
-        savedInstanceState: Bundle?,
-        rootKey: String?,
-    ) {
-        val context = preferenceManager.context
-        val screen = preferenceManager.createPreferenceScreen(context)
-        screen.addPreference(
-            Preference(context).apply {
-                setTitle(R.string.real_time_logs)
-                isIconSpaceReserved = false
-                setOnPreferenceClickListener {
-                    AppUtils.launchLogActivity(context)
-                    true
-                }
-            },
-        )
-        screen.addPreference(
-            Preference(context).apply {
-                setTitle(R.string.real_time_logs_clear)
-                isIconSpaceReserved = false
-                setOnPreferenceClickListener {
-                    AlertDialog
-                        .Builder(context)
-                        .setMessage(R.string.real_time_logs_confirm)
-                        .setPositiveButton(R.string.ok) { _, _ ->
-                            Logcat.Companion.default.clearLog()
-                        }.setNegativeButton(R.string.cancel, null)
-                        .show()
-                    true
-                }
-            },
-        )
-        preferenceScreen = screen
+    override fun buildPage(builder: SettingsBuilder) {
+        val ctx = requireContext()
+        builder.space(12)
+        builder.section("日志")
+        builder.group().let { card ->
+            builder.row(card, ctx.getString(R.string.real_time_logs)) {
+                AppUtils.launchLogActivity(ctx)
+            }
+            builder.row(card, ctx.getString(R.string.real_time_logs_clear)) {
+                AlertDialog
+                    .Builder(ctx)
+                    .setMessage(R.string.real_time_logs_confirm)
+                    .setPositiveButton(R.string.ok) { _, _ ->
+                        Logcat.default.clearLog()
+                    }.setNegativeButton(R.string.cancel, null)
+                    .show()
+            }
+        }
+        builder.space(8)
+        builder.note("日志只写入本机 logcat，用于排查输入法问题；清空后不可撤销。")
     }
 
     override fun onResume() {
         super.onResume()
+        // 与旧页面一致：开发者页不显示顶栏的面板操作菜单。
         viewModel.disableTopOptionsMenu()
     }
 }

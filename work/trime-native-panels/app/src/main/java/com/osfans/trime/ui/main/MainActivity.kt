@@ -15,8 +15,6 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.appcompat.graphics.drawable.DrawerArrowDrawable
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsAnimationCompat
@@ -36,6 +34,9 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.soundeffect.SoundEffectManager
 import com.osfans.trime.databinding.ActivityMainBinding
 import com.osfans.trime.ui.setup.SetupActivity
+import com.osfans.trime.ui.settingskit.BackPillDrawable
+import com.osfans.trime.ui.settingskit.Palette
+import com.osfans.trime.ui.settingskit.SettingsPalette
 import com.osfans.trime.util.item
 import com.osfans.trime.util.parcelable
 import com.osfans.trime.util.startActivity
@@ -48,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private val uiMode by AppPrefs.defaultInstance().advanced.uiMode
 
     private lateinit var navController: NavController
+    private lateinit var headerPalette: Palette
     private var testInputPanel: TestInputPanel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,17 +95,10 @@ class MainActivity : AppCompatActivity() {
                 }
             },
         )
-        WindowCompat
-            .getInsetsController(window, window.decorView)
-            .isAppearanceLightStatusBars = false
-
         setContentView(binding.root)
-        // always show toolbar back arrow icon
-        binding.mainToolbar.toolbar.navigationIcon =
-            DrawerArrowDrawable(this).apply {
-                progress = 1f
-                color = ContextCompat.getColor(this@MainActivity, R.color.toolbarForegroundColor)
-            }
+        // Same light bar + centred title + 「‹ 返回」 capsule as the redesigned settings pages.
+        headerPalette = Palette.of(resolveDarkTheme())
+        applyHeaderStyle(binding)
         // show menu icon and other action icons on toolbar
         // don't use `setSupportActionBar(binding.toolbar)` here,
         // because navController would change toolbar title, we need to control it by ourselves
@@ -133,11 +128,12 @@ class MainActivity : AppCompatActivity() {
         }
         navController.addOnDestinationChangedListener { _, dest, _ ->
             dest.label?.let { viewModel.setToolbarTitle(it.toString()) }
-            binding.mainToolbar.toolbar.subtitle =
+            // Root page has no back button; child pages get the capsule instead of the old arrow.
+            binding.mainToolbar.toolbar.navigationIcon =
                 if (dest.hasRoute<NavigationRoute.Main>()) {
-                    getString(R.string.trime_app_slogan)
+                    null
                 } else {
-                    ""
+                    BackPillDrawable(this, headerPalette)
                 }
         }
 
@@ -178,12 +174,50 @@ class MainActivity : AppCompatActivity() {
         testInputPanel?.show(window)
     }
 
+    /** Resolves the same light/dark decision the settings pages use (`advanced.ui_mode`). */
+    private fun resolveDarkTheme(): Boolean =
+        when (AppPrefs.defaultInstance().advanced.uiMode.getValue()) {
+            AppPrefs.Advanced.UiMode.DARK -> true
+            AppPrefs.Advanced.UiMode.LIGHT -> false
+            else -> SettingsPalette.isNightMode(this)
+        }
+
+    /**
+     * Turns the old dark `colorPrimary` AppBar into the reference header: page-coloured bar,
+     * dark title/icons in light mode, light title/icons in dark mode. The navigation capsule is
+     * swapped per destination in the destination listener.
+     */
+    private fun applyHeaderStyle(binding: ActivityMainBinding) {
+        val appBar = binding.mainToolbar.root
+        appBar.setBackgroundColor(headerPalette.background)
+        appBar.elevation = 0f
+        appBar.stateListAnimator = null
+        val toolbar = binding.mainToolbar.toolbar
+        toolbar.setBackgroundColor(headerPalette.background)
+        toolbar.setTitleTextColor(headerPalette.ink)
+        toolbar.isTitleCentered = true
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !headerPalette.dark
+            isAppearanceLightNavigationBars = !headerPalette.dark
+        }
+    }
+
     private fun setupToolbarMenu(menu: Menu) {
         val optionMenuItems = listOf(
-            menu.item(R.string.deploy, R.drawable.ic_baseline_refresh_reversed_24, showAsAction = true) {
+            menu.item(
+                R.string.deploy,
+                R.drawable.ic_baseline_refresh_reversed_24,
+                iconTint = headerPalette.ink,
+                showAsAction = true,
+            ) {
                 viewModel.deploy()
             },
-            menu.item(R.string.test_input, R.drawable.ic_baseline_keyboard_24, showAsAction = true) {
+            menu.item(
+                R.string.test_input,
+                R.drawable.ic_baseline_keyboard_24,
+                iconTint = headerPalette.ink,
+                showAsAction = true,
+            ) {
                 testInputPanel?.show(window)
             },
             menu.item(R.string.developer) {
@@ -198,14 +232,24 @@ class MainActivity : AppCompatActivity() {
                 item.isVisible = enabled
             }
         }
-        menu.item(R.string.edit, R.drawable.ic_baseline_edit_24, showAsAction = true) {
+        menu.item(
+            R.string.edit,
+            R.drawable.ic_baseline_edit_24,
+            iconTint = headerPalette.ink,
+            showAsAction = true,
+        ) {
             viewModel.toolbarEditButtonOnClickListener.value?.invoke()
         }.apply {
             viewModel.toolbarEditButtonVisible.observe(this@MainActivity) {
                 isVisible = it
             }
         }
-        menu.item(R.string.delete, R.drawable.ic_baseline_delete_24, showAsAction = true) {
+        menu.item(
+            R.string.delete,
+            R.drawable.ic_baseline_delete_24,
+            iconTint = headerPalette.ink,
+            showAsAction = true,
+        ) {
             viewModel.toolbarDeleteButtonOnClickListener.value?.invoke()
         }.apply {
             viewModel.toolbarDeleteButtonOnClickListener.observe(this@MainActivity) {
