@@ -320,19 +320,22 @@ class Key(
             }
         }
 
-    fun getBackgroundDrawable(): Drawable? = when (appearanceType) {
-        2 -> if (isPressed) hlOnKeyBackground else onKeyBackground
+    fun getBackgroundDrawable(ignoreOnState: Boolean = false): Drawable? {
+        val type = if (ignoreOnState && appearanceType == 2) 1 else appearanceType
+        return when (type) {
+            2 -> if (isPressed) hlOnKeyBackground else onKeyBackground
 
-        1 -> {
-            if (isPressed) {
-                hlOffKeyBackground
-            } else {
-                keyDef?.keyBackColor.takeIf { !it.isNullOrEmpty() }?.let { keyBackground }
-                    ?: offKeyBackground
+            1 -> {
+                if (isPressed) {
+                    hlOffKeyBackground
+                } else {
+                    keyDef?.keyBackColor.takeIf { !it.isNullOrEmpty() }?.let { keyBackground }
+                        ?: offKeyBackground
+                }
             }
-        }
 
-        else -> if (isPressed) hlKeyBackground else keyBackground
+            else -> if (isPressed) hlKeyBackground else keyBackground
+        }
     }
 
     fun getBorderColor(): Int = when (appearanceType) {

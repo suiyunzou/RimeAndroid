@@ -36,6 +36,10 @@ class SmartInputPrefs(context: Context) {
     var wheelOriginPlacement: String
         get() = prefs.getString("wheel_origin_placement", "finger") ?: "finger"
         set(value) { prefs.edit().putString("wheel_origin_placement", if (value == "space_center") value else "finger").apply() }
+    /** Function bound to the keyboard's bottom-right key; "voice" keeps the offline microphone. */
+    var cornerAction: String
+        get() = prefs.getString("corner_action", "voice")?.takeIf { it == "voice" || it in ACTIONS } ?: "voice"
+        set(value) { prefs.edit().putString("corner_action", if (value == "voice" || value in ACTIONS) value else "voice").apply() }
     var uppercaseLabels: Boolean
         get() = prefs.getBoolean("uppercase_labels", false)
         set(value) { prefs.edit().putBoolean("uppercase_labels", value).apply() }

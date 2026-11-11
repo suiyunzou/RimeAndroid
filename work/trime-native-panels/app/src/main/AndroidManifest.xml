@@ -150,6 +150,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
         <activity android:name=".ime.smart.ModelManagerActivity" android:exported="false"
             android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+        <activity android:name=".ime.voice.VoiceModelActivity" android:exported="false"
+            android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
         <activity android:name=".ime.smart.WordLibraryActivity" android:exported="false"
             android:excludeFromRecents="true" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
 

@@ -212,6 +212,7 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                         "date", "time", "chinese_date", "weekday", "datetime", "lunar_date", "lunar_datetime" -> smartCommit(com.osfans.trime.ime.smart.RadialMenuView.formatTimeAction(action))
                         "traditional" -> service.postRimeJob { SmartLanguageOptions.toggleTraditional(this) }
                         "toggle_language" -> toggleLanguage()
+                        "ime_picker" -> inputMethodManager.showInputMethodPicker()
                         "english" -> service.postRimeJob {
                             if (statusCached.isComposing) commitComposition()
                             setRuntimeOption("ascii_mode", true)

@@ -234,6 +234,7 @@ class SmartSettingsActivity : Activity() {
         val chinese=group();toggle(chinese,"拼音纠错",prefs.correction){prefs.correction=it};toggle(chinese,"候选中显示表情",prefs.candidateEmoji){prefs.candidateEmoji=it}
         row(chinese,"纠错样式",CorrectionStyle.labels[CorrectionStyleSpans.selected(this)].orEmpty()){startActivity(Intent(this,CorrectionStyleActivity::class.java))}
         row(chinese,"整句模型","切换"){startActivity(Intent(this,ModelManagerActivity::class.java))}
+        row(chinese,"语音模型",if(com.osfans.trime.ime.voice.VoiceModelStore.status(this)==com.osfans.trime.ime.voice.VoiceModelStore.Status.READY)"已下载" else "未下载"){startActivity(Intent(this,com.osfans.trime.ime.voice.VoiceModelActivity::class.java))}
         chinese.addView(text(ModelManagerStore.currentLabel(DataManager.userDataDir),14f,muted).apply{
             modelLabelView=this
             setPadding(dp(16),0,dp(16),dp(12));setOnClickListener{startActivity(Intent(this@SmartSettingsActivity,ModelManagerActivity::class.java))}
@@ -273,7 +274,7 @@ class SmartSettingsActivity : Activity() {
         row(g,"高度",if(keyboardHeight()==212)"标准" else "自定义"){startActivity(Intent(this,ReferenceHeightActivity::class.java))}
         row(g,"布局",if(prefs.layout=="t9")"九宫格" else "全键盘"){choose("键盘布局",listOf("全键盘","九宫格"),if(prefs.layout=="t9")1 else 0){prefs.layout=if(it==1)"t9" else "qwerty";render()}}
         space();val theme=group();val mode=selectedUiMode()
-        row(theme,"键盘主题",if(ThemeManager.prefs.selectedTheme.getValue()=="rerime-reference.trime")"ios风格" else "原有主题"){selectKeyboardTheme()}
+        row(theme,"键盘主题",if(ThemeManager.prefs.selectedTheme.getValue()=="rerime-reference.trime")"默认主题" else "原有主题"){selectKeyboardTheme()}
         row(theme,"主题",when(mode){AppPrefs.Advanced.UiMode.LIGHT->"浅色";AppPrefs.Advanced.UiMode.DARK->"深色";else->"跟随系统"}){
             choose("主题",listOf("跟随系统","浅色","深色"),when(mode){AppPrefs.Advanced.UiMode.LIGHT->1;AppPrefs.Advanced.UiMode.DARK->2;else->0}){ index->
                 setUiMode(listOf(AppPrefs.Advanced.UiMode.AUTO,AppPrefs.Advanced.UiMode.LIGHT,AppPrefs.Advanced.UiMode.DARK)[index])
@@ -310,7 +311,7 @@ class SmartSettingsActivity : Activity() {
         val available=try { withContext(Dispatchers.IO) { ThemeManager.getAllThemes().distinctBy{it.configId} } } finally { readingThemes=false }
         if(isFinishing || page!="display")return@launch
         val ids=(listOf("rerime-reference.trime","wechat-clean.trime")+available.map{it.configId}).distinct()
-        val names=ids.map{id->when(id){"rerime-reference.trime"->"ios风格";"wechat-clean.trime"->"原有微信风格";else->available.firstOrNull{it.configId==id}?.name?:id}}
+        val names=ids.map{id->when(id){"rerime-reference.trime"->"默认主题";"wechat-clean.trime"->"原有微信风格";else->available.firstOrNull{it.configId==id}?.name?:id}}
         choose("键盘主题",names,ids.indexOf(ThemeManager.prefs.selectedTheme.getValue()).coerceAtLeast(0)){index->
             val target=ids[index]
             if(available.none{it.configId==target}){Toast.makeText(this@SmartSettingsActivity,"此主题暂不可用",Toast.LENGTH_SHORT).show();return@choose}

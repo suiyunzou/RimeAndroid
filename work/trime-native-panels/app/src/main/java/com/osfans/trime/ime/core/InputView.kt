@@ -54,6 +54,7 @@ import com.osfans.trime.ime.smart.TailCompletionController
 import com.osfans.trime.ime.smart.TailCompletionNative
 import com.osfans.trime.ime.symbol.LiquidWindow
 import com.osfans.trime.ime.voice.OfflineVoiceManager
+import com.osfans.trime.ime.voice.VoiceModelStore
 import com.osfans.trime.ime.voice.VoicePanelView
 import com.osfans.trime.ime.voice.VoiceUiController
 import com.osfans.trime.ime.window.BoardWindowManager
@@ -259,9 +260,11 @@ class InputView(
         })
 
         voiceUi.applyTheme(scope)
-        // Extract the offline ASR model while the user types, so the first
-        // microphone tap does not wait for ~180 MB of asset copying.
-        OfflineVoiceManager.preload(service)
+        // Warm the recognizer path only when the downloaded model is on the
+        // device; without it the microphone key guides the user to download.
+        if (VoiceModelStore.status(service) == VoiceModelStore.Status.READY) {
+            OfflineVoiceManager.preload(service)
+        }
 
         windowManager.cacheResidentWindow(keyboardWindow, createView = true)
         windowManager.cacheResidentWindow(liquidWindow)

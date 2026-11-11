@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.osfans.trime.ime.voice
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.widget.Toast
 import androidx.core.graphics.ColorUtils
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.core.TrimeInputMethodService
@@ -80,6 +82,15 @@ class VoiceUiController(
 
     /** Microphone key tap: start listening, or finish the running session. */
     fun toggle() {
+        if (VoiceModelStore.status(service) != VoiceModelStore.Status.READY) {
+            timber.log.Timber.i("voice: model missing, opening download page")
+            Toast.makeText(service, "离线语音模型未下载", Toast.LENGTH_SHORT).show()
+            service.startActivity(
+                Intent(service, VoiceModelActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            return
+        }
         if (OfflineVoiceManager.isBusy()) {
             OfflineVoiceManager.stop()
             return

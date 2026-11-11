@@ -51,6 +51,12 @@ class KeyView(
     private val deletedTextBuffer = ArrayDeque<String>()
     private val smartPrefs = com.osfans.trime.ime.smart.SmartInputPrefs(context)
     private val glidePrefs = com.osfans.trime.ime.smart.GlidePrefs(context)
+    /** Bottom-right rebindable key (offline voice by default). */
+    private val isCornerKey = key.getCode(KeyBehavior.CLICK) == KeyEvent.KEYCODE_VOICE_ASSIST
+    private val isGlobeKey = key.getCode(KeyBehavior.CLICK) == KeyEvent.KEYCODE_LANGUAGE_SWITCH
+    private val cornerIconPainter by lazy {
+        com.osfans.trime.ime.smart.RadialMenuView(context).apply { traditionalLabel = "简" }
+    }
     private var variantDownX: Float? = null
     private var variantDownY: Float? = null
     internal var flickPreviewLabel: String? = null
@@ -125,7 +131,8 @@ class KeyView(
         isRepeatable = key.click?.isRepeatable ?: false
         isSlideCursor = key.click?.isSlideCursor ?: false
         isSlideDelete = key.click?.isSlideDelete ?: false
-        hasLongPress = key.hasAction(KeyBehavior.LONG_CLICK) || variants().isNotEmpty() || isEmojiKey()
+        hasLongPress = key.hasAction(KeyBehavior.LONG_CLICK) || variants().isNotEmpty() || isEmojiKey() ||
+            (keyboardView.smartFeaturesEnabled && (isCornerKey || (isGlobeKey && theme.isIosStyle)))
         hasDouble = key.hasAction(KeyBehavior.DOUBLE_CLICK)
         hasLazyDouble = key.hasAction(KeyBehavior.LAZY_DOUBLE_CLICK)
         hasPopup = key.popup.isNotEmpty()
@@ -225,31 +232,46 @@ class KeyView(
         }
 
         onLongClick = {
-            val variants = if (keyboardView.smartFeaturesEnabled) variants() else emptyList()
-            if (variants.isNotEmpty()) {
+            if (keyboardView.smartFeaturesEnabled && isCornerKey) {
                 dismissPopupPreview()
-                com.osfans.trime.ime.smart.SymbolVariantPopup.show(
-                    this, variants,
-                    onCommit = { keyboardActionListener.onSmartAction("text:$it") },
-                    initialX = variantDownX, initialY = variantDownY,
-                )
                 setPressedState(false)
-            } else if (keyboardView.smartFeaturesEnabled && (isEmojiKey() || key.getLabel().contains("表情") || key.getLabel() in listOf("☺", "😊", "😀", "☻"))) {
-                com.osfans.trime.ime.smart.SymbolVariantPopup.show(this,
-                    com.osfans.trime.ime.smart.ReferenceEmojiCatalog.emoticons,
-                    onCommit={keyboardActionListener.onSmartAction("text:$it")},
-                    initialX=variantDownX, initialY=variantDownY,
-                    onExpand={keyboardActionListener.onSmartAction("emoji_expand")})
+                com.osfans.trime.ime.smart.CornerKeyMenu.show(this) { action ->
+                    smartPrefs.cornerAction = action
+                    invalidate()
+                }
+            } else if (keyboardView.smartFeaturesEnabled && isGlobeKey && theme.isIosStyle &&
+                key.click?.select.isNullOrEmpty()
+            ) {
+                dismissPopupPreview()
                 setPressedState(false)
-                dismissPopupPreview()
-            } else if (key.popup.isNotEmpty()) {
-                dismissPopupPreview()
-                showPopupKeyboard()
-            } else if (hasLongPress) {
-                key.getAction(KeyBehavior.LONG_CLICK)?.let {
-                    processKeyAction(it, KeyBehavior.LONG_CLICK)
+                keyboardActionListener.onSmartAction("ime_picker")
+            } else {
+                val variants = if (keyboardView.smartFeaturesEnabled) variants() else emptyList()
+                if (variants.isNotEmpty()) {
+                    dismissPopupPreview()
+                    com.osfans.trime.ime.smart.SymbolVariantPopup.show(
+                        this, variants,
+                        onCommit = { keyboardActionListener.onSmartAction("text:$it") },
+                        initialX = variantDownX, initialY = variantDownY,
+                    )
+                    setPressedState(false)
+                } else if (keyboardView.smartFeaturesEnabled && (isEmojiKey() || key.getLabel().contains("表情") || key.getLabel() in listOf("☺", "😊", "😀", "☻"))) {
+                    com.osfans.trime.ime.smart.SymbolVariantPopup.show(this,
+                        com.osfans.trime.ime.smart.ReferenceEmojiCatalog.emoticons,
+                        onCommit={keyboardActionListener.onSmartAction("text:$it")},
+                        initialX=variantDownX, initialY=variantDownY,
+                        onExpand={keyboardActionListener.onSmartAction("emoji_expand")})
                     setPressedState(false)
                     dismissPopupPreview()
+                } else if (key.popup.isNotEmpty()) {
+                    dismissPopupPreview()
+                    showPopupKeyboard()
+                } else if (hasLongPress) {
+                    key.getAction(KeyBehavior.LONG_CLICK)?.let {
+                        processKeyAction(it, KeyBehavior.LONG_CLICK)
+                        setPressedState(false)
+                        dismissPopupPreview()
+                    }
                 }
             }
         }
@@ -332,6 +354,14 @@ class KeyView(
             )
             keyboardView.invalidateAllKeys()
             return
+        }
+
+        if (keyboardView.smartFeaturesEnabled && isCornerKey && action.code == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            val corner = smartPrefs.cornerAction
+            if (corner != "voice") {
+                keyboardActionListener.onSmartAction(corner)
+                return
+            }
         }
 
         keyboardActionListener.onAction(action)
@@ -424,16 +454,25 @@ class KeyView(
         }
         val label = if (localized) KeyboardPunctuation.localized(rawLabel, asciiMode) else rawLabel
 
+        val cornerAction = if (keyboardView.smartFeaturesEnabled && isCornerKey) smartPrefs.cornerAction else "voice"
+
         contentDescription = when (key.getCode(KeyBehavior.CLICK)) {
             KeyEvent.KEYCODE_SPACE -> "空格"
             KeyEvent.KEYCODE_DEL -> "退格"
-            KeyEvent.KEYCODE_LANGUAGE_SWITCH -> if (reference && key.click?.select.isNullOrEmpty()) "切换中英文" else "切换输入法"
+            KeyEvent.KEYCODE_LANGUAGE_SWITCH -> if (reference && key.click?.select.isNullOrEmpty()) "切换中英文，长按切换输入法" else "切换输入法"
+            KeyEvent.KEYCODE_VOICE_ASSIST -> "右下角功能：" + (com.osfans.trime.ime.smart.SmartInputPrefs.LABELS[cornerAction] ?: "语音")
             KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> "Shift"
             else -> if (isEmojiKey()) "表情" else label
         }
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
 
-        val labelTop = if (label.isNotEmpty()) drawLabel(canvas, label) else Float.POSITIVE_INFINITY
+        val labelTop =
+            if (isCornerKey && cornerAction != "voice") {
+                val cx = (width - paddingLeft - paddingRight) / 2f + paddingLeft
+                val cy = (height - paddingTop - paddingBottom) / 2f + paddingTop
+                cornerIconPainter.drawIcon(canvas, cornerAction, cx, cy, dp(10f), key.getTextColor())
+                Float.POSITIVE_INFINITY
+            } else if (label.isNotEmpty()) drawLabel(canvas, label) else Float.POSITIVE_INFINITY
 
         if (reference && key.code == KeyEvent.KEYCODE_SPACE) {
             textPaint.apply {
@@ -454,7 +493,15 @@ class KeyView(
             smartPrefs.binding(bindingName(), direction == FlickDirection.UP)
         } else null
         ViewCompat.setStateDescription(this, KeyBindingLabels.actionHint(binding, direction == FlickDirection.UP))
-        val defaultSymbol = key.symbolLabel
+        var defaultSymbol = key.symbolLabel
+        // The theme pins "EN" to the shift cap. Case it by state instead:
+        // lowercase while typing Chinese unshifted, uppercase once shifted
+        // (or already in English mode), matching Apple's shift key.
+        if (theme.isIosStyle && defaultSymbol == "EN" &&
+            key.getCode(KeyBehavior.CLICK) in intArrayOf(KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT)
+        ) {
+            defaultSymbol = if (key.isOn || asciiMode) "EN" else "en"
+        }
         if (keyboardView.smartFeaturesEnabled && showFlick && !keyboardView.hideKeySymbol &&
             (binding != null || defaultSymbol.isNotEmpty() && !defaultSymbol.isIconFont && '\n' !in defaultSymbol)) {
             val area = RectF(
@@ -476,7 +523,12 @@ class KeyView(
     }
 
     private fun drawBackground(canvas: Canvas, k: Key) {
-        val bg = k.getBackgroundDrawable() ?: return
+        // 大写时仅箭头与角标变化：ios风格下 shift 键帽保持功能键底色，
+        // 不切到主题的 on_key_back_color（苹果会点亮键帽，这里按用户偏好收紧）。
+        val bg =
+            k.getBackgroundDrawable(
+                ignoreOnState = theme.isIosStyle && k.isOn && k.click?.isModifierKey == true,
+            ) ?: return
 
         if (bg is GradientDrawable) {
             k.roundCorner.takeIf { it > 0f }?.let { bg.cornerRadius = dp(it) }
@@ -552,6 +604,18 @@ class KeyView(
             // The shift arrow reads thin at key size: widen it a touch and
             // double-stroke for a slightly bolder cut, iOS-style.
             val widenShift = reference && label in setOf("⇧", "⇪")
+            if (widenShift && key.isOn) {
+                // Engaged shift: filled arrow in the active-state text color,
+                // matching Apple/Gboard; the outline glyph stays for idle state.
+                val faceHeight = (height - paddingTop - paddingBottom).toFloat()
+                val faceWidth = (width - paddingLeft - paddingRight).toFloat()
+                com.osfans.trime.ime.smart.ReferenceShiftIcon.drawFilled(
+                    canvas, x, baseline - textPaint.textSize * 0.34f,
+                    minOf(dp(21f), faceHeight * .48f, faceWidth * .62f), textColor,
+                )
+                textPaint.getTextBounds(label, 0, label.length, labelInk)
+                return baseline + labelInk.top
+            }
             if (widenShift) {
                 textPaint.isFakeBoldText = true
                 val glyphCheckpoint = canvas.save()
