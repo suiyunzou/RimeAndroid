@@ -109,12 +109,16 @@ class VoiceModelActivity : SettingsKitActivity() {
             try {
                 withContext(Dispatchers.IO) {
                     VoiceModelDownloader.download(applicationContext) { progress ->
+                        // Build progress text without mixing templates into a
+                        // String.format call: interpolated '%' starts a format
+                        // spec and crashes the formatter on the worker thread.
+                        val miB = "%.1f".format(progress.downloadedBytes / 1048576.0)
                         val text =
                             when {
                                 progress.percent > 100 -> "正在校验安装… ${progress.percent - 100}%"
                                 progress.percent == 100 -> "正在校验安装…"
-                                progress.percent >= 0 -> "正在下载… ${progress.percent}%（%.1f MiB）".format(progress.downloadedBytes / 1048576.0)
-                                else -> "正在下载… %.1f MiB".format(progress.downloadedBytes / 1048576.0)
+                                progress.percent >= 0 -> "正在下载… ${progress.percent}%（${miB} MiB）"
+                                else -> "正在下载… ${miB} MiB"
                             }
                         runOnUiThread { if (!isDestroyed) status?.text = text }
                     }.getOrThrow()
