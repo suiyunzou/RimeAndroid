@@ -80,8 +80,8 @@ clean_personal_dictionary.lua
 microsoft-pinyin-personalization/
 *.gram
 !work/trime-native-panels/app/src/main/assets/local-models/wanxiang-compact-v2.gram
-# The on-device ASR model (~198 MB, one file over GitHub's 100 MB limit) ships in the APK.
-# keep it local so the source tree stays publishable.
+# The on-device ASR model (~198 MB) is downloaded on demand from the
+# GitHub release, so it stays local and out of the source tree.
 work/trime-native-panels/app/src/main/assets/asr_model/
 *.db
 *.sqlite*
