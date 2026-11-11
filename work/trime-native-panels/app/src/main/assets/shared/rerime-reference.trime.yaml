@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Generated from trime-stock.yaml. Existing themes and user preferences are untouched.
+# 本主题是唯一内置主题（默认主题）。之后的新皮肤不再新增整份主题文件，
+# 只通过新增 color_schemes 配色（键帽颜色、背景等）实现，在设置里切换。
 config_version: '3.1'
-name: ios风格
+name: 默认主题
 author: Local adaptation from observed video; Trime stock GPL-3.0-or-later
 style:
   auto_caps: false

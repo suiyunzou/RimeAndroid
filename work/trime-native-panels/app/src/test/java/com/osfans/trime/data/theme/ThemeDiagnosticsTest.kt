@@ -438,7 +438,7 @@ class ThemeDiagnosticsTest :
                 )
 
             fun lintBuiltin(file: String): List<ThemeDiagnostics.Finding> {
-                val (theme, node) = ThemeTestSupport.themeAndNode("src/main/assets/shared/$file")
+                val (theme, node) = ThemeTestSupport.themeAndNode("src/test/resources/$file")
                 return ThemeDiagnostics.lint(theme, node, ::parseHex)
             }
 

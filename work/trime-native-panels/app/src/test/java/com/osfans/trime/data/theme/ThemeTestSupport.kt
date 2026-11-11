@@ -33,6 +33,6 @@ object ThemeTestSupport {
         return yaml.decodeFromYamlNode<Theme>(mapping) to mapping
     }
 
-    /** Decodes a built-in theme source file (app/src/main/assets/shared/). */
-    fun decodeBuiltinTheme(fileName: String): Theme = decodeThemeFile("src/main/assets/shared/$fileName")
+    /** Decodes a bundled-for-tests theme source file (app/src/test/resources/). */
+    fun decodeBuiltinTheme(fileName: String): Theme = decodeThemeFile("src/test/resources/$fileName")
 }

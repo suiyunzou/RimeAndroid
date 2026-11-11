@@ -32,7 +32,7 @@ data class Theme(
     val toolBar: ToolBar = ToolBar(),
 ) {
     /** Keep existing user copies of this theme compatible after its display-name change. */
-    val isIosStyle: Boolean get() = name == "ios风格" || name.contains("视频参考")
+    val isIosStyle: Boolean get() = name == "默认主题" || name == "ios风格" || name.contains("视频参考")
 
     val fonts by lazy { ThemeFonts(this) }
 
