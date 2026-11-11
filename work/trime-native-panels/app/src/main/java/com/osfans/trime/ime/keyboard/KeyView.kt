@@ -139,6 +139,9 @@ class KeyView(
 
         onRelease = { behavior, isFromLongPress ->
             Timber.d("KeyView release: label=${key.getLabel()}, behavior=$behavior, fromLongPress=$isFromLongPress")
+            com.osfans.trime.ime.smart.FastTypeTrace.log(
+                "keyview release label=${key.getLabel()} behavior=$behavior long=$isFromLongPress firstIdx=${keyboard.firstPressedKeyIndex}",
+            )
             if (isFromLongPress) {
                 if (com.osfans.trime.ime.smart.SymbolVariantPopup.release(this)) {
                     setPressedState(false)
@@ -159,6 +162,9 @@ class KeyView(
                     KeyBehavior.CLICK -> {
                         val pressedIdx = keyboard.firstPressedKeyIndex
                         val actionBehavior = if (pressedIdx != -1 && pressedIdx != id) KeyBehavior.COMBO else behavior
+                        if (actionBehavior == KeyBehavior.COMBO) {
+                            com.osfans.trime.ime.smart.FastTypeTrace.log("keyview combo label=${key.getLabel()} firstIdx=$pressedIdx")
+                        }
                         key.getAction(actionBehavior)?.let { processKeyAction(it, actionBehavior) }
                     }
 
@@ -292,6 +298,7 @@ class KeyView(
 
     private fun processKeyAction(action: KeyAction, behavior: KeyBehavior) {
         Timber.d("processKeyAction: label=${key.getLabel()}, code=${action.code}, type=$behavior")
+        com.osfans.trime.ime.smart.FastTypeTrace.log("action label=${key.getLabel()} code=${action.code} behavior=$behavior")
 
         if (keyboard.flickSymbolsLocked && (behavior == KeyBehavior.CLICK || behavior == KeyBehavior.COMBO)) {
             if (key.click?.select == "number") {

@@ -514,6 +514,7 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                 keyEventCode: Int,
                 metaState: Int,
             ) {
+                com.osfans.trime.ime.smart.FastTypeTrace.log("onKey code=$keyEventCode meta=$metaState")
                 if (keyEventCode == KeyEvent.KEYCODE_DEL && metaState == 0 && keyboardWindow.allowSmartInput && !service.isRimeComposing &&
                     PairPunctuationHandler.handleBackspace(service.currentInputConnection)
                 ) return

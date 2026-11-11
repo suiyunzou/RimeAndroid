@@ -47,6 +47,9 @@ class RimeDispatcher(
             get() = System.currentTimeMillis() - time
 
         override fun run() {
+            if (delta > 100) {
+                com.osfans.trime.ime.smart.FastTypeTrace.log("rime wait ${delta}ms job=${name ?: hashCode()}")
+            }
             if (delta > JOB_WAITING_LIMIT) {
                 Timber.w("${toString()} has waited $delta ms to get run since created!")
             }

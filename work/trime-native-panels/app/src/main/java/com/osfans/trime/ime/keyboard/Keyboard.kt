@@ -319,6 +319,21 @@ class Keyboard(
                 }
             }
 
+            // Rows whose outermost keys stop short of the screen edge leave dead
+            // margins where fast edge taps land and vanish. Extend the outermost
+            // key of every row to the edges; KeyView padding absorbs the extra
+            // view width, so keycap visuals stay unchanged.
+            if (expandKeypressArea) {
+                mKeys.groupBy { it.row }.forEach { (_, rowKeys) ->
+                    rowKeys.minByOrNull { it.x }?.let { leftKey ->
+                        leftKey.extraWidthLeft += leftKey.x
+                    }
+                    rowKeys.maxByOrNull { it.x + it.width }?.let { rightKey ->
+                        rightKey.extraWidthRight += allowedWidth - rightKey.x - rightKey.width
+                    }
+                }
+            }
+
             mKeys.lastOrNull()?.edgeFlags = mKeys.lastOrNull()?.edgeFlags?.or(EDGE_RIGHT) ?: 0
 
             height = yPos + currentRowHeight

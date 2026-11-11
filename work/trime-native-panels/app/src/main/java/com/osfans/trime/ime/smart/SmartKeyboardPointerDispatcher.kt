@@ -23,6 +23,9 @@ class SmartKeyboardPointerDispatcher(
         var smart = false
         var x = 0f
         var y = 0f
+        var seq = 0
+        var downX = 0f
+        var downY = 0f
     }
     private val streams = ArrayList<Stream>(2)
 
@@ -40,7 +43,8 @@ class SmartKeyboardPointerDispatcher(
                         // Replay it before deciding whether the older finger is
                         // a stationary tap, flick, cursor gesture, or glide.
                         deliver(stream, event, index, MotionEvent.ACTION_MOVE, settlingOverlap = true)
-                        stream.controller.settleOverlappingTap(event.getX(index), event.getY(index))
+                        val settled = stream.controller.settleOverlappingTap(event.getX(index), event.getY(index))
+                        FastTypeTrace.log("settle seq=${stream.seq} committed=$settled")
                     }
                 }
                 begin(event, event.actionIndex)
@@ -72,12 +76,37 @@ class SmartKeyboardPointerDispatcher(
         val keyIndex = keys.indexOfFirst { x >= it.x - it.extraWidthLeft && x < it.x + it.width + it.extraWidthRight && y >= it.y && y < it.y + it.height }
         stream.keyIndex = keyIndex
         stream.key = host.getChildAt(keyIndex) as? KeyView
+        stream.seq = FastTypeTrace.next()
+        stream.downX = x
+        stream.downY = y
+        stream.controller.traceSeq = stream.seq
+        val modelKey = keys.getOrNull(keyIndex)
+        val loc = IntArray(2)
+        host.getLocationOnScreen(loc)
+        FastTypeTrace.log(
+            "down seq=${stream.seq} pid=${stream.pointerId} idx=$keyIndex " +
+                "label=${modelKey?.getLabel()} lag=${SystemClock.uptimeMillis() - event.eventTime}ms",
+        )
+        FastTypeTrace.log(
+            "geo seq=${stream.seq} key.y=${modelKey?.y} key.h=${modelKey?.height} " +
+                "key.x=${modelKey?.x} key.w=${modelKey?.width} exL=${modelKey?.extraWidthLeft} exR=${modelKey?.extraWidthRight} " +
+                "ev.x=${event.x.toInt()} ev.y=${event.y.toInt()} rawY=${event.rawY.toInt()} " +
+                "host.screenTop=${loc[1]} host.h=${host.height} " +
+                "view.top=${stream.key?.top} view.h=${stream.key?.height} view.transY=${stream.key?.translationY?.toInt()}",
+        )
         deliver(stream, event, pointerIndex, MotionEvent.ACTION_DOWN)
     }
 
     private fun deliver(stream: Stream, event: MotionEvent, index: Int, action: Int, settlingOverlap: Boolean = false) {
         stream.x = event.getX(index)
         stream.y = event.getY(index)
+        if (action == MotionEvent.ACTION_UP) {
+            FastTypeTrace.log(
+                "up seq=${stream.seq} pid=${stream.pointerId} smart=${stream.smart} " +
+                    "dx=${stream.x - stream.downX} dy=${stream.y - stream.downY} " +
+                    "hold=${event.eventTime - stream.downTime}ms lag=${SystemClock.uptimeMillis() - event.eventTime}ms",
+            )
+        }
         val single = if (action == MotionEvent.ACTION_MOVE && event.historySize > 0) {
             MotionEvent.obtain(stream.downTime, event.getHistoricalEventTime(0), action,
                 event.getHistoricalX(index, 0), event.getHistoricalY(index, 0), event.metaState).apply {
@@ -89,8 +118,10 @@ class SmartKeyboardPointerDispatcher(
             }
         } else MotionEvent.obtain(stream.downTime, event.eventTime, action, stream.x, stream.y, event.metaState)
         try {
-            if (action == MotionEvent.ACTION_DOWN) stream.smart = stream.controller.dispatch(single, stream.keyIndex)
-            else if (stream.smart) stream.controller.dispatch(single, settlingOverlap = settlingOverlap)
+            if (action == MotionEvent.ACTION_DOWN) {
+                stream.smart = stream.controller.dispatch(single, stream.keyIndex)
+                FastTypeTrace.log("route seq=${stream.seq} smart=${stream.smart}")
+            } else if (stream.smart) stream.controller.dispatch(single, settlingOverlap = settlingOverlap)
             if (!stream.smart) stream.key?.let { key ->
                 single.offsetLocation(-key.x, -key.y)
                 key.dispatchTouchEvent(single)

@@ -861,6 +861,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     private fun commitTextWithResult(text: String): Boolean {
         val ic = currentInputConnection ?: return false
+        com.osfans.trime.ime.smart.FastTypeTrace.log("commit \"${text.take(24)}\"")
 
         // when composing text equals commit content, finish composing text as-is
         val success = if (composingText.isNotEmpty() && composingText == text) {

@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.ime.smart.FastTypeTrace
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -106,6 +107,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
                 slideActivated = false
                 swipeTriggered = false
                 lastSwipeBehavior = KeyBehavior.CLICK
+                FastTypeTrace.log("gf down id=$currentTouchId code=$feedbackKeyCode")
 
                 drawableHotspotChanged(x, y)
                 isPressed = true
@@ -161,6 +163,10 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
             MotionEvent.ACTION_UP -> {
                 val dx = x - startX
                 val dy = y - startY
+                FastTypeTrace.log(
+                    "gf up id=$touchId code=$feedbackKeyCode dx=$dx dy=$dy " +
+                        "hold=${SystemClock.elapsedRealtime() - startTime}ms long=$isLongPressed swipe=$swipeTriggered",
+                )
 
                 isPressed = false
                 if (tunedFeedback) {
@@ -219,6 +225,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
             MotionEvent.ACTION_CANCEL -> {
                 isPressed = false
                 cancelJobs()
+                FastTypeTrace.log("gf cancel id=$touchId code=$feedbackKeyCode")
 
                 isLongPressed = false
                 slideActivated = false
@@ -238,6 +245,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
             if (touchId != currentTouchId) return@launch
             if (swipeTriggered || slideActivated) return@launch
             isLongPressed = true
+            FastTypeTrace.log("gf longpress id=$touchId code=$feedbackKeyCode")
 
             if (tunedFeedback || vibrateOnKeyPress) InputFeedbackManager.keyPressVibrate(feedbackSurface, true, feedbackKeyCode)
 
@@ -293,6 +301,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
         behavior: KeyBehavior,
         longPress: Boolean,
     ) {
+        FastTypeTrace.log("gf dispatch id=$touchId code=$feedbackKeyCode behavior=$behavior longPress=$longPress")
         onRelease?.invoke(behavior, longPress)
         when (behavior) {
             KeyBehavior.CLICK -> performClick()

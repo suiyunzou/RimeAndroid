@@ -60,6 +60,7 @@ class SmartKeyboardTouchController(
     private var composingAtDown = false
     private var cursorNavigated = false
     private var touchId = 0
+    internal var traceSeq = 0
     private var editorAtDown: Any? = null
     private enum class Mode { KEY, CURSOR, PINYIN, WHEEL, GLIDE }
     private val heldKey get() = keys.getOrNull(index)
@@ -214,20 +215,53 @@ class SmartKeyboardTouchController(
                     val result = glide.finish(event.x, event.y)
                     if (result.kind == GlideGestureSession.Kind.GLIDE) decodeGlide(result.points)
                 }
-                Mode.KEY -> if (glideAllowed) {
-                    if (glide.finish(event.x, event.y).kind == GlideGestureSession.Kind.TAP) keyView?.smartTap()
-                } else if (isStationaryTapOnHeldKey(event.x, event.y)) {
-                    // A tap stays a tap for the whole key face. The flick classifier
-                    // drops a press that rolled farther than the flick distance without
-                    // reaching it; using the key rect prevents a lost or a later key.
-                    keyView?.smartTap()
-                } else when (flick.up(event.x, event.y, event.eventTime)) {
-                    KeyFlickGesture.Action.TAP -> keyView?.smartTap()
-                    KeyFlickGesture.Action.FLICK_UP -> dispatchFlick(true)
-                    KeyFlickGesture.Action.FLICK_DOWN -> dispatchFlick(false)
-                    KeyFlickGesture.Action.LOCK_FLICK_UP -> dispatchFlick(true, lock = true)
-                    KeyFlickGesture.Action.LOCK_FLICK_DOWN -> dispatchFlick(false, lock = true)
-                    else -> Unit
+                Mode.KEY -> {
+                    if (glideAllowed) {
+                        val kind = glide.finish(event.x, event.y).kind
+                        FastTypeTrace.log("decide seq=$traceSeq glide=$kind code=$keyCode")
+                        if (kind == GlideGestureSession.Kind.TAP) keyView?.smartTap()
+                    } else {
+                        val stationary = isStationaryTapOnHeldKey(event.x, event.y)
+                        if (stationary) {
+                            FastTypeTrace.log("decide seq=$traceSeq branch=stationary code=$keyCode")
+                            keyView?.smartTap()
+                        } else when (flick.up(event.x, event.y, event.eventTime)) {
+                            KeyFlickGesture.Action.TAP -> {
+                                FastTypeTrace.log("decide seq=$traceSeq branch=flickTap code=$keyCode")
+                                keyView?.smartTap()
+                            }
+                            KeyFlickGesture.Action.FLICK_UP -> {
+                                FastTypeTrace.log("decide seq=$traceSeq branch=FLICK_UP code=$keyCode")
+                                dispatchFlick(true)
+                            }
+                            KeyFlickGesture.Action.FLICK_DOWN -> {
+                                FastTypeTrace.log("decide seq=$traceSeq branch=FLICK_DOWN code=$keyCode")
+                                dispatchFlick(false)
+                            }
+                            KeyFlickGesture.Action.LOCK_FLICK_UP -> {
+                                FastTypeTrace.log("decide seq=$traceSeq branch=LOCK_UP code=$keyCode")
+                                dispatchFlick(true, lock = true)
+                            }
+                            KeyFlickGesture.Action.LOCK_FLICK_DOWN -> {
+                                FastTypeTrace.log("decide seq=$traceSeq branch=LOCK_DOWN code=$keyCode")
+                                dispatchFlick(false, lock = true)
+                            }
+                            else -> {
+                                // A tap-length press that rolled off the key face used to
+                                // vanish (silent CANCEL). Fast taps commit their original
+                                // key instead; slower gestures keep the old behavior so
+                                // deliberate slides stay silent.
+                                val holdMs = event.eventTime - downEventTime
+                                val rescueKey = heldKey
+                                if (holdMs < 220L && rescueKey != null) {
+                                    FastTypeTrace.log("rescue seq=$traceSeq hold=${holdMs}ms commit=${rescueKey.getLabel()}")
+                                    keyView?.smartTap()
+                                } else {
+                                    FastTypeTrace.log("decide seq=$traceSeq branch=CANCEL code=$keyCode")
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -255,6 +289,7 @@ class SmartKeyboardTouchController(
 
     /** Commit an earlier letter/space tap before the next thumb starts, even if it lifts last. */
     fun settleOverlappingTap(x: Float, y: Float): Boolean {
+        FastTypeTrace.log("settle_in seq=$traceSeq idx=$index code=$keyCode active=$active cancelled=$cancelled mode=$mode")
         if (!active || cancelled || mode != Mode.KEY ||
             (keyCode !in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z && keyCode != KeyEvent.KEYCODE_SPACE) ||
             (glideAllowed && !glide.isStationaryTap)) return false
@@ -280,10 +315,15 @@ class SmartKeyboardTouchController(
         }
         val symbolAction = if (lock) "lock_flick_symbol:" else "flick_symbol:"
         val custom = prefs.binding(name, up)
+        FastTypeTrace.log("flick seq=$traceSeq name=$name up=$up lock=$lock custom=${custom != null}")
         when {
             custom != null -> listener.onSmartAction(resolveFlickBinding(custom, lock))
             name == "shift" -> if (heldKey?.keyActions?.containsKey(KeyBehavior.SWIPE_DOWN) == true) keyView?.smartFlick(up) else listener.onSmartAction("english")
-            name.length == 1 && name[0] in "qwertyuiop" -> listener.onSmartAction(symbolAction + "1234567890"["qwertyuiop".indexOf(name[0])])
+            name.length == 1 && name[0] in "qwertyuiop" -> {
+                val emitted = symbolAction + "1234567890"["qwertyuiop".indexOf(name[0])]
+                FastTypeTrace.log("flick_emit seq=$traceSeq $emitted")
+                listener.onSmartAction(emitted)
+            }
             else -> {
                 val behavior = if (up) KeyBehavior.SWIPE_UP else KeyBehavior.SWIPE_DOWN
                 val mapped = heldKey?.keyActions?.get(behavior)
@@ -416,6 +456,7 @@ class SmartKeyboardTouchController(
     }
 
     fun cancel(finishPinyin: Boolean = false, preserveGlide: Boolean = false) {
+        if (active) FastTypeTrace.log("cancel seq=$traceSeq idx=$index mode=$mode finishPinyin=$finishPinyin")
         if (!preserveGlide) {
             glideGeneration++
             glideJob?.cancel()
